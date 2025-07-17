@@ -32,47 +32,14 @@ use bloomfilter::Bloom;
 // use rand::rngs::OsRng; // Removed: unused
 use rand::Rng;
 use sha2::{Sha256, Digest};
-use serde::{Serialize, Deserialize};
 use serde_json;
-
-// Debug levels
-#[derive(Debug, Clone, Copy, PartialEq)]
-enum DebugLevel {
-    Clean = 0,    // Default - minimal output
-    Basic = 1,    // Connection info, key exchanges
-    Full = 2,     // All debug output
-}
-
-// Global debug level
-static mut DEBUG_LEVEL: DebugLevel = DebugLevel::Clean;
-
-// Debug macro for basic debug (level 1+)
-macro_rules! debug_println {
-    ($($arg:tt)*) => {
-        unsafe {
-            if DEBUG_LEVEL as u8 >= DebugLevel::Basic as u8 {
-                println!($($arg)*);
-            }
-        }
-    };
-}
-
-// Debug macro for full debug (level 2)
-macro_rules! debug_full_println {
-    ($($arg:tt)*) => {
-        unsafe {
-            if DEBUG_LEVEL as u8 >= DebugLevel::Full as u8 {
-                println!($($arg)*);
-            }
-        }
-    };
-}
 
 mod compression;
 mod fragmentation;
 mod encryption;
 mod terminal_ux;
 mod persistence;
+mod data_structures;
 
 use compression::decompress;
 use fragmentation::{send_packet_with_fragmentation, should_fragment};
@@ -80,201 +47,14 @@ use encryption::EncryptionService;
 use terminal_ux::{ChatContext, ChatMode, format_message_display, print_help};
 use persistence::{AppState, load_state, save_state, encrypt_password, decrypt_password};
 
-// --- Constants ---
-
-const VERSION: &str = "v1.0.0";
-
-const BITCHAT_SERVICE_UUID: Uuid = Uuid::from_u128(0xF47B5E2D_4A9E_4C5A_9B3F_8E1D2C3A4B5C);
-
-const BITCHAT_CHARACTERISTIC_UUID: Uuid = Uuid::from_u128(0xA1B2C3D4_E5F6_4A5B_8C9D_0E1F2A3B4C5D);
-
-// Cover traffic prefix used by iOS for dummy messages
-const COVER_TRAFFIC_PREFIX: &str = "☂DUMMY☂";
-
-// Packet header flags
-const FLAG_HAS_RECIPIENT: u8 = 0x01;
-const FLAG_HAS_SIGNATURE: u8 = 0x02;
-const FLAG_IS_COMPRESSED: u8 = 0x04;
-
-// Message payload flags (matching Swift's toBinaryPayload)
-#[allow(dead_code)]
-const MSG_FLAG_IS_RELAY: u8 = 0x01;
-const MSG_FLAG_IS_PRIVATE: u8 = 0x02;
-const MSG_FLAG_HAS_ORIGINAL_SENDER: u8 = 0x04;
-const MSG_FLAG_HAS_RECIPIENT_NICKNAME: u8 = 0x08;
-const MSG_FLAG_HAS_SENDER_PEER_ID: u8 = 0x10;
-const MSG_FLAG_HAS_MENTIONS: u8 = 0x20;
-const MSG_FLAG_HAS_CHANNEL: u8 = 0x40;
-const MSG_FLAG_IS_ENCRYPTED: u8 = 0x80;
-
-#[allow(dead_code)]
-const SIGNATURE_SIZE: usize = 64;  // Ed25519 signature size
-
-// Swift's SpecialRecipients.broadcast = Data(repeating: 0xFF, count: 8)
-const BROADCAST_RECIPIENT: [u8; 8] = [0xFF; 8];
-
-// --- Protocol Structs and Enums ---
-
-#[repr(u8)]
-
-#[derive(Debug, Clone, Copy, PartialEq)]
-
-enum MessageType { 
-    Announce = 0x01, 
-    KeyExchange = 0x02, 
-    Leave = 0x03,
-    Message = 0x04,
-    FragmentStart = 0x05,
-    FragmentContinue = 0x06,
-    FragmentEnd = 0x07,
-    ChannelAnnounce = 0x08,      // Channel status announcement (matches Swift v2 code)
-    ChannelRetention = 0x09,     // Channel retention policy (matches Swift v2 code)
-    DeliveryAck = 0x0A,          // Acknowledge message received
-    DeliveryStatusRequest = 0x0B,  // Request delivery status
-    ReadReceipt = 0x0C,          // Message has been read
-}
-
-#[derive(Debug, Default, Clone)]
-
-struct Peer { nickname: Option<String> }
-
-#[derive(Debug)]
-
-struct BitchatPacket { 
-    msg_type: MessageType, 
-    _sender_id: Vec<u8>,  // Kept for protocol compatibility 
-    sender_id_str: String,  // Add string version for easy comparison
-    recipient_id: Option<Vec<u8>>,  // Add recipient ID
-    recipient_id_str: Option<String>,  // Add string version of recipient
-    payload: Vec<u8>,
-    ttl: u8,  // Add TTL field
-}
-
-#[derive(Debug)]
-
-struct BitchatMessage { 
-    id: String, 
-    content: String, 
-    channel: Option<String>,
-    is_encrypted: bool,
-    encrypted_content: Option<Vec<u8>>,  // Store raw encrypted bytes
-}
-
-// Delivery confirmation structures matching iOS
-#[derive(Serialize, Deserialize, Debug, Clone)]
-struct DeliveryAck {
-    #[serde(rename = "originalMessageID")]
-    original_message_id: String,
-    #[serde(rename = "ackID")]
-    ack_id: String,
-    #[serde(rename = "recipientID")]
-    recipient_id: String,
-    #[serde(rename = "recipientNickname")]
-    recipient_nickname: String,
-    timestamp: u64,
-    #[serde(rename = "hopCount")]
-    hop_count: u8,
-}
-
-// Track sent messages awaiting delivery confirmation
-struct DeliveryTracker {
-    pending_messages: HashMap<String, (String, SystemTime, bool)>, // message_id -> (content, sent_time, is_private)
-    sent_acks: HashSet<String>, // Track ACK IDs we've already sent to prevent duplicates
-}
-
-impl DeliveryTracker {
-    fn new() -> Self {
-        Self {
-            pending_messages: HashMap::new(),
-            sent_acks: HashSet::new(),
-        }
-    }
-    
-    fn track_message(&mut self, message_id: String, content: String, is_private: bool) {
-        self.pending_messages.insert(message_id, (content, SystemTime::now(), is_private));
-    }
-    
-    fn mark_delivered(&mut self, message_id: &str) -> bool {
-        self.pending_messages.remove(message_id).is_some()
-    }
-    
-    fn should_send_ack(&mut self, ack_id: &str) -> bool {
-        self.sent_acks.insert(ack_id.to_string())
-    }
-}
-
-// Fragment reassembly tracking - using hex strings as keys (matching Swift)
-struct FragmentCollector {
-    fragments: HashMap<String, HashMap<u16, Vec<u8>>>,  // fragment_id_hex -> (index -> data)
-    metadata: HashMap<String, (u16, u8, String)>,  // fragment_id_hex -> (total, original_type, sender_id)
-}
-
-impl FragmentCollector {
-    fn new() -> Self {
-        FragmentCollector {
-            fragments: HashMap::new(),
-            metadata: HashMap::new(),
-        }
-    }
-    
-    fn add_fragment(&mut self, fragment_id: [u8; 8], index: u16, total: u16, original_type: u8, data: Vec<u8>, sender_id: String) -> Option<(Vec<u8>, String)> {
-        // Convert fragment ID to hex string (matching Swift's hexEncodedString)
-        let fragment_id_hex = fragment_id.iter().map(|b| format!("{:02x}", b)).collect::<String>();
-        
-        debug_full_println!("[COLLECTOR] Adding fragment {} (index {}/{}) for ID {}", 
-                index + 1, index + 1, total, &fragment_id_hex[..8]);
-        
-        // Initialize if first fragment
-        if !self.fragments.contains_key(&fragment_id_hex) {
-            debug_full_println!("[COLLECTOR] Creating new fragment collection for ID {}", &fragment_id_hex[..8]);
-            self.fragments.insert(fragment_id_hex.clone(), HashMap::new());
-            self.metadata.insert(fragment_id_hex.clone(), (total, original_type, sender_id.clone()));
-        }
-        
-        // Add fragment data at index
-        if let Some(fragment_map) = self.fragments.get_mut(&fragment_id_hex) {
-            fragment_map.insert(index, data);
-            debug_full_println!("[COLLECTOR] Fragment {} stored. Have {}/{} fragments", 
-                    index + 1, fragment_map.len(), total);
-            
-            // Check if we have all fragments
-            if fragment_map.len() == total as usize {
-                debug_full_println!("[COLLECTOR] ✓ All fragments received! Reassembling...");
-                
-                // Reassemble in order
-                let mut complete_data = Vec::new();
-                for i in 0..total {
-                    if let Some(fragment_data) = fragment_map.get(&i) {
-                        debug_full_println!("[COLLECTOR] Appending fragment {} ({} bytes)", i + 1, fragment_data.len());
-                        complete_data.extend_from_slice(fragment_data);
-                    } else {
-                        debug_full_println!("[COLLECTOR] ✗ Missing fragment {}", i + 1);
-                        return None;
-                    }
-                }
-                
-                debug_full_println!("[COLLECTOR] ✓ Reassembly complete: {} bytes total", complete_data.len());
-                
-                // Get sender from metadata
-                let sender = self.metadata.get(&fragment_id_hex)
-                    .map(|(_, _, s)| s.clone())
-                    .unwrap_or_else(|| "Unknown".to_string());
-                
-                // Clean up
-                self.fragments.remove(&fragment_id_hex);
-                self.metadata.remove(&fragment_id_hex);
-                
-                return Some((complete_data, sender));
-            } else {
-                debug_full_println!("[COLLECTOR] Waiting for more fragments ({}/{} received)", 
-                        fragment_map.len(), total);
-            }
-        }
-        
-        None
-    }
-}
-
+use crate::data_structures::{
+    DebugLevel, DEBUG_LEVEL, MessageType, Peer, BitchatPacket, BitchatMessage, DeliveryAck,
+    DeliveryTracker, FragmentCollector, VERSION, BITCHAT_SERVICE_UUID, BITCHAT_CHARACTERISTIC_UUID,
+    COVER_TRAFFIC_PREFIX, FLAG_HAS_RECIPIENT, FLAG_HAS_SIGNATURE, FLAG_IS_COMPRESSED,
+    MSG_FLAG_IS_PRIVATE, MSG_FLAG_HAS_ORIGINAL_SENDER, MSG_FLAG_HAS_RECIPIENT_NICKNAME,
+    MSG_FLAG_HAS_SENDER_PEER_ID, MSG_FLAG_HAS_MENTIONS, MSG_FLAG_HAS_CHANNEL, MSG_FLAG_IS_ENCRYPTED,
+    BROADCAST_RECIPIENT,
+};
 
 #[tokio::main]
 
