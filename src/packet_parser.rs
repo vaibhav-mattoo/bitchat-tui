@@ -2,8 +2,7 @@
 use std::convert::TryInto;
 use sha2::{Sha256, Digest};
 use crate::data_structures::{
-    BitchatPacket, MessageType, FLAG_HAS_RECIPIENT, FLAG_HAS_SIGNATURE, FLAG_IS_COMPRESSED,
-    DebugLevel, DEBUG_LEVEL
+    BitchatPacket, MessageType, FLAG_HAS_RECIPIENT, FLAG_HAS_SIGNATURE, FLAG_IS_COMPRESSED
 };
 use crate::compression::decompress;
 use crate::encryption::EncryptionService;

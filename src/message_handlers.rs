@@ -1,7 +1,7 @@
 
 use std::collections::{HashMap, HashSet};
 use std::io::Write;
-use btleplug::api::{Characteristic, WriteType, Peripheral as _};
+use btleplug::api::{WriteType, Peripheral as _};
 use btleplug::platform::Peripheral;
 use uuid::Uuid;
 use chrono;

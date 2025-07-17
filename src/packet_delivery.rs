@@ -3,7 +3,7 @@ use std::time::SystemTime;
 use uuid::Uuid;
 use btleplug::api::Characteristic;
 use btleplug::platform::Peripheral;
-use crate::data_structures::{DeliveryAck, MessageType, DebugLevel, DEBUG_LEVEL};
+use crate::data_structures::{DeliveryAck, MessageType};
 use crate::packet_creation::create_bitchat_packet;
 use crate::fragmentation::send_packet_with_fragmentation;
 use crate::debug_println;

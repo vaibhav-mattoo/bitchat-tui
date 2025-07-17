@@ -178,37 +178,7 @@ impl ChatContext {
         println!("╰────────────────────────────╯");
     }
     
-    pub fn get_conversation_list_with_numbers(&self) -> String {
-        let mut output = String::from("╭─── Select Conversation ───╮\n");
-        
-        // Public
-        output.push_str("│  1. Public                │\n");
-        
-        // Channels
-        let mut num = 2;
-        for channel in &self.active_channels {
-            output.push_str(&format!("│  {}. {}{}│\n", 
-                num, 
-                channel,
-                " ".repeat(20 - channel.len())
-            ));
-            num += 1;
-        }
-        
-        // DMs
-        for (nick, _) in &self.active_dms {
-            let dm_text = format!("DM: {}", nick);
-            output.push_str(&format!("│  {}. {}{}│\n", 
-                num,
-                dm_text,
-                " ".repeat(20 - dm_text.len())
-            ));
-            num += 1;
-        }
-        
-        output.push_str("╰───────────────────────────╯");
-        output
-    }
+
 }
 
 pub fn format_message_display(

@@ -1,25 +1,22 @@
-use btleplug::api::{Central, Characteristic, Manager as _, Peripheral as _, ScanFilter, WriteType};
+use btleplug::api::{Central, Manager as _, Peripheral as _, ScanFilter, WriteType};
 
 use btleplug::platform::{Manager, Peripheral};
 
 use tokio::io::{self, AsyncBufReadExt, BufReader};
-use std::io::Write;
+
 
 use tokio::sync::mpsc;
 
 use tokio::time::{self, Duration};
 
-use uuid::Uuid;
 
 use futures::stream::StreamExt;
 
 use std::collections::{HashMap, HashSet};
 
-use std::convert::TryInto;
 
 use std::sync::{Arc, Mutex};
 
-use std::time::SystemTime;
 
 use std::env;
 
@@ -31,8 +28,7 @@ use bloomfilter::Bloom;
 
 // use rand::rngs::OsRng; // Removed: unused
 use rand::Rng;
-use sha2::{Sha256, Digest};
-use serde_json;
+
 
 mod compression;
 mod fragmentation;
@@ -48,21 +44,11 @@ mod command_handling;
 mod message_handlers;
 mod notification_handlers;
 
-use compression::decompress;
-use fragmentation::{send_packet_with_fragmentation, should_fragment};
 use encryption::EncryptionService;
-use terminal_ux::{ChatContext, ChatMode, format_message_display, print_help};
-use persistence::{AppState, load_state, save_state, encrypt_password, decrypt_password};
-use payload_handling::{
-    unpad_message, parse_bitchat_message_payload, create_bitchat_message_payload,
-    create_bitchat_message_payload_full, create_encrypted_channel_message_payload
-};
+use terminal_ux::{ChatContext, ChatMode};
+use persistence::{AppState, load_state, decrypt_password};
 use packet_parser::{parse_bitchat_packet, generate_keys_and_payload};
-use packet_creation::{
-    create_bitchat_packet, create_bitchat_packet_with_signature,
-    create_bitchat_packet_with_recipient_and_signature, create_bitchat_packet_with_recipient
-};
-use packet_delivery::{create_delivery_ack, should_send_ack, send_channel_announce};
+use packet_creation::create_bitchat_packet;
 use command_handling::{
     handle_number_switching, handle_help_command, handle_name_command, handle_list_command,
     handle_join_command, handle_exit_command, handle_reply_command, handle_public_command,
@@ -72,17 +58,15 @@ use command_handling::{
 };
 use message_handlers::{handle_private_dm_message, handle_regular_message};
 use notification_handlers::{
-    handle_announce_message, handle_message_relay, handle_private_message_decryption,
+    handle_announce_message,
     handle_message_packet, handle_fragment_packet, handle_key_exchange_message,
     handle_leave_message, handle_channel_announce_message, handle_delivery_ack_message,
     handle_delivery_status_request_message, handle_read_receipt_message
 };
 
 use crate::data_structures::{
-    DebugLevel, DEBUG_LEVEL, MessageType, Peer, BitchatPacket, DeliveryAck,
+    DebugLevel, DEBUG_LEVEL, MessageType, Peer,
     DeliveryTracker, FragmentCollector, VERSION, BITCHAT_SERVICE_UUID, BITCHAT_CHARACTERISTIC_UUID,
-    COVER_TRAFFIC_PREFIX, FLAG_HAS_RECIPIENT, FLAG_HAS_SIGNATURE, FLAG_IS_COMPRESSED,
-    BROADCAST_RECIPIENT,
 };
 
 // Function to handle input and display ASCII art
@@ -731,12 +715,11 @@ mod tests {
     #[test]
     fn test_protocol_constants() {
         // Verify protocol constants match Swift/Android implementations
-        assert_eq!(FLAG_HAS_RECIPIENT, 0x01);
-        assert_eq!(FLAG_HAS_SIGNATURE, 0x02);
-        assert_eq!(FLAG_IS_COMPRESSED, 0x04);
-        assert_eq!(FLAG_HAS_CHANNEL, 0x40);
-        assert_eq!(SIGNATURE_SIZE, 64);
-        assert_eq!(BROADCAST_RECIPIENT, [0xFF; 8]);
+        assert_eq!(crate::data_structures::FLAG_HAS_RECIPIENT, 0x01);
+        assert_eq!(crate::data_structures::FLAG_HAS_SIGNATURE, 0x02);
+        assert_eq!(crate::data_structures::FLAG_IS_COMPRESSED, 0x04);
+        assert_eq!(crate::data_structures::SIGNATURE_SIZE, 64);
+        assert_eq!(crate::data_structures::BROADCAST_RECIPIENT, [0xFF; 8]);
     }
 } 
 

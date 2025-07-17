@@ -1,11 +1,11 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
 use std::io::Write;
-use btleplug::api::{Characteristic, WriteType, Peripheral as _};
+use btleplug::api::{WriteType, Peripheral as _};
 use btleplug::platform::Peripheral;
 use sha2::{Sha256, Digest};
 use crate::data_structures::{
-    MessageType, Peer, DeliveryTracker, DebugLevel, DEBUG_LEVEL, VERSION
+    MessageType, Peer, DeliveryTracker, VERSION
 };
 use crate::terminal_ux::{ChatContext, ChatMode, print_help};
 use crate::persistence::{AppState, save_state, encrypt_password, EncryptedPassword};

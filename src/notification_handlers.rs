@@ -17,10 +17,9 @@ use crate::terminal_ux::{ChatContext, ChatMode, format_message_display};
 use crate::encryption::EncryptionService;
 use crate::payload_handling::{unpad_message, parse_bitchat_message_payload};
 use crate::packet_creation::{
-    create_bitchat_packet_with_recipient_and_signature, create_bitchat_packet_with_signature,
     create_bitchat_packet_with_recipient, create_bitchat_packet
 };
-use crate::packet_delivery::{create_delivery_ack, send_channel_announce, should_send_ack};
+use crate::packet_delivery::{create_delivery_ack, should_send_ack};
 use crate::packet_parser::{parse_bitchat_packet, generate_keys_and_payload};
 use crate::persistence::{AppState, EncryptedPassword, save_state};
 use crate::{debug_println, debug_full_println};

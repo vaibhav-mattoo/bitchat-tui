@@ -1,8 +1,7 @@
 
 use std::time::SystemTime;
 use crate::data_structures::{
-    MessageType, FLAG_HAS_RECIPIENT, FLAG_HAS_SIGNATURE, BROADCAST_RECIPIENT,
-    DebugLevel, DEBUG_LEVEL
+    MessageType, FLAG_HAS_RECIPIENT, FLAG_HAS_SIGNATURE, BROADCAST_RECIPIENT
 };
 use crate::debug_full_println;
 

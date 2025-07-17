@@ -3,7 +3,7 @@ use uuid::Uuid;
 use crate::data_structures::{
     BitchatMessage, MSG_FLAG_HAS_CHANNEL, MSG_FLAG_IS_PRIVATE, MSG_FLAG_IS_ENCRYPTED,
     MSG_FLAG_HAS_ORIGINAL_SENDER, MSG_FLAG_HAS_RECIPIENT_NICKNAME, MSG_FLAG_HAS_SENDER_PEER_ID,
-    MSG_FLAG_HAS_MENTIONS, DebugLevel, DEBUG_LEVEL
+    MSG_FLAG_HAS_MENTIONS
 };
 use crate::debug_full_println;
 use crate::encryption::EncryptionService;
