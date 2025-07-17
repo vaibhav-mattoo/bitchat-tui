@@ -1,0 +1,46 @@
+# Rust
+/target/
+**/*.rs.bk
+*.pdb
+Cargo.lock
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Debug
+*.log
+
+# Test coverage
+*.profraw
+*.profdata
+/coverage/
+
+# Local environment
+.env
+.env.local
+
+# Development scripts
+*.pl
+
+# Backup files
+*.backup
+*.bak
+*.old
+*.orig
+
+# Temporary files
+*.tmp
+*.temp
+textdump
+
+
+# User data directory
+.bitchat/

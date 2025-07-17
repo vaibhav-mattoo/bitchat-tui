@@ -1,0 +1,30 @@
+[package]
+name = "bitchat_poc"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "bitchat"
+path = "src/main.rs"
+
+[dependencies]
+tokio = { version = "1", features = ["full", "process"] }
+btleplug = "0.11"
+rand = "0.8"
+uuid = { version = "1", features = ["v4"] }
+hex = "0.4"
+sha2 = "0.10"
+hkdf = "0.12"
+pbkdf2 = "0.12"
+futures = "0.3" 
+bloomfilter = "1.0" 
+lz4_flex = "0.11" 
+chrono = "0.4"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+dirs = "5.0"
+
+# For Cryptography
+x25519-dalek = { version = "2.0", features = ["static_secrets", "getrandom"] }
+ed25519-dalek = { version = "2.0", features = ["rand_core"] }
+aes-gcm = { version = "0.10", features = ["aes"] }
