@@ -19,7 +19,7 @@ pub static mut DEBUG_LEVEL: DebugLevel = DebugLevel::Clean;
 macro_rules! debug_println {
     ($($arg:tt)*) => {
         unsafe {
-            if DEBUG_LEVEL as u8 >= DebugLevel::Basic as u8 {
+            if crate::data_structures::DEBUG_LEVEL as u8 >= crate::data_structures::DebugLevel::Basic as u8 {
                 println!($($arg)*);
             }
         }
@@ -31,7 +31,7 @@ macro_rules! debug_println {
 macro_rules! debug_full_println {
     ($($arg:tt)*) => {
         unsafe {
-            if DEBUG_LEVEL as u8 >= DebugLevel::Full as u8 {
+            if crate::data_structures::DEBUG_LEVEL as u8 >= crate::data_structures::DebugLevel::Full as u8 {
                 println!($($arg)*);
             }
         }
