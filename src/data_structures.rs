@@ -4,7 +4,7 @@ use serde::{Serialize, Deserialize};
 use uuid::Uuid;
 
 // Debug levels
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
 pub enum DebugLevel {
     Clean = 0,    // Default - minimal output
     Basic = 1,    // Connection info, key exchanges
