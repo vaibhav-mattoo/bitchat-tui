@@ -1,14 +1,23 @@
 use btleplug::api::{Central, Manager as _, Peripheral as _, ScanFilter, WriteType};
 use btleplug::platform::{Manager, Peripheral};
-use tokio::io::{self, AsyncBufReadExt, BufReader};
+
 use tokio::sync::mpsc;
 use tokio::time::{self, Duration};
 use futures::stream::StreamExt;
 use std::collections::{HashMap, HashSet};
-use std::sync::{Arc, Mutex};
-use std::env;
+use std::sync::Arc;
+use tokio::sync::Mutex;
+
 use bloomfilter::Bloom;
 use rand::Rng;
+mod tui;
+use tui::app::App;
+use tui::tui as tui_mod;
+use tui::ui;
+use tui::event;
+use crossterm::event as crossterm_event;
+use crossterm::event::Event as CrosstermEvent;
+use std::time::Duration as StdDuration;
 
 mod compression;
 mod fragmentation;
@@ -26,7 +35,7 @@ mod notification_handlers;
 
 use encryption::EncryptionService;
 use terminal_ux::{ChatContext, ChatMode};
-use persistence::{AppState, load_state, decrypt_password};
+use persistence::{AppState, load_state};
 use packet_parser::{parse_bitchat_packet, generate_keys_and_payload};
 use packet_creation::create_bitchat_packet;
 use command_handling::{
@@ -45,62 +54,23 @@ use notification_handlers::{
 };
 use crate::data_structures::{
     DebugLevel, DEBUG_LEVEL, MessageType, Peer,
-    DeliveryTracker, FragmentCollector, VERSION, BITCHAT_SERVICE_UUID, BITCHAT_CHARACTERISTIC_UUID,
+    DeliveryTracker, FragmentCollector, BITCHAT_SERVICE_UUID, BITCHAT_CHARACTERISTIC_UUID,
 };
 
 // This function now takes a UI channel sender to direct its output.
 // It still reads from stdin directly but sends user input over its own channel.
-fn spawn_input_handler(input_tx: mpsc::Sender<String>, ui_tx: mpsc::Sender<String>) -> tokio::task::JoinHandle<()> {
-    tokio::spawn(async move {
-        let mut stdin = BufReader::new(io::stdin()).lines();
-
-        // Send ASCII art and startup messages to the UI task
-        let logo_and_header = [
-            "\n\x1b[38;5;46m##\\       ##\\   ##\\               ##\\                  ##\\",
-            "## |      \\__|  ## |              ## |                 ## |",
-            "#######\\  ##\\ ######\\    #######\\ #######\\   ######\\ ######\\",
-            "##  __##\\ ## |\\_##  _|  ##  _____|##  __##\\  \\____##\\\\_##  _|",
-            "## |  ## |## |  ## |    ## /      ## |  ## | ####### | ## |",
-            "## |  ## |## |  ## |##\\ ## |      ## |  ## |##  __## | ## |##\\",
-            "#######  |## |  \\####  |\\#######\\ ## |  ## |\\####### | \\####  |",
-            "\\_______/ \\__|   \\____/  \\_______|\\__|  \\__| \\_______|  \\____/\x1b[0m",
-            &format!("\n\x1b[38;5;40mâ”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”\x1b[0m"),
-            "\x1b[37mDecentralized â€¢ Encrypted â€¢ Peer-to-Peer â€¢ Open Source\x1b[0m",
-            &format!("\x1b[37m                bitch@ the terminal {}\x1b[0m", VERSION),
-            &format!("\x1b[38;5;40mâ”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”\x1b[0m\n"),
-        ];
-
-        for line in logo_and_header {
-            if ui_tx.send(format!("{}\n", line)).await.is_err() { return; }
-        }
-
-        loop {
-            // Send the prompt to the UI task
-            if ui_tx.send("> ".to_string()).await.is_err() { break; }
-
-            match stdin.next_line().await {
-                Ok(Some(line)) => {
-                    if input_tx.send(line).await.is_err() { break; }
-                }
-                _ => break, // Error or EOF
-            }
-        }
-    })
-}
-
-// This function now takes a UI channel sender to direct its status and error messages.
-async fn setup_bluetooth_connection(ui_tx: mpsc::Sender<String>) -> Result<Peripheral, Box<dyn std::error::Error>> {
+async fn setup_bluetooth_connection(ui_tx: mpsc::Sender<String>) -> Result<Peripheral, Box<dyn std::error::Error + Send + Sync>> {
     let manager = Manager::new().await?;
     let adapters = manager.adapters().await?;
     let adapter = match adapters.into_iter().nth(0) {
         Some(adapter) => adapter,
         None => {
             let error_message = [
-                "\n\x1b[91mâŒ No Bluetooth adapter found\x1b[0m",
+                "\n\x1b[91m❌ No Bluetooth adapter found\x1b[0m",
                 "\x1b[90mPlease check:\x1b[0m",
-                "\x1b[90m  â€¢ Your device has Bluetooth hardware\x1b[0m",
-                "\x1b[90m  â€¢ Bluetooth is enabled in system settings\x1b[0m",
-                "\x1b[90m  â€¢ You have permission to use Bluetooth\x1b[0m",
+                "\x1b[90m  • Your device has Bluetooth hardware\x1b[0m",
+                "\x1b[90m  • Bluetooth is enabled in system settings\x1b[0m",
+                "\x1b[90m  • You have permission to use Bluetooth\x1b[0m",
             ].join("\n");
             ui_tx.send(error_message).await.map_err(|e| e.to_string())?;
             return Err("No Bluetooth adapter found.".into());
@@ -109,7 +79,7 @@ async fn setup_bluetooth_connection(ui_tx: mpsc::Sender<String>) -> Result<Perip
 
     adapter.start_scan(ScanFilter::default()).await?;
 
-    ui_tx.send("\x1b[90mÂ» Scanning for bitchat service...\x1b[0m\n".to_string()).await.map_err(|e| e.to_string())?;
+    ui_tx.send("\x1b[90m» Scanning for bitchat service...\x1b[0m\n".to_string()).await.map_err(|e| e.to_string())?;
 
     // We can't use debug_println! here directly as it's not async-aware and prints directly.
     // Instead, we replicate its logic and send to the UI channel.
@@ -119,7 +89,7 @@ async fn setup_bluetooth_connection(ui_tx: mpsc::Sender<String>) -> Result<Perip
     
     let peripheral = loop {
         if let Some(p) = find_peripheral(&adapter).await? {
-            ui_tx.send("\x1b[90mÂ» Found bitchat service! Connecting...\x1b[0m\n".to_string()).await.map_err(|e| e.to_string())?;
+            ui_tx.send("\x1b[90m» Found bitchat service! Connecting...\x1b[0m\n".to_string()).await.map_err(|e| e.to_string())?;
             if unsafe { DEBUG_LEVEL } >= DebugLevel::Basic {
                 ui_tx.send("[1] Match Found! Connecting...\n".to_string()).await.map_err(|e| e.to_string())?;
             }
@@ -130,7 +100,7 @@ async fn setup_bluetooth_connection(ui_tx: mpsc::Sender<String>) -> Result<Perip
     };
 
     if let Err(e) = peripheral.connect().await {
-        let error_message = format!("\n\x1b[91mâŒ Connection failed\x1b[0m\n\x1b[90mReason: {}\x1b[0m\n\x1b[90mPlease check:\x1b[0m\n\x1b[90m  â€¢ Bluetooth is enabled\x1b[0m\n\x1b[90m  â€¢ The other device is running BitChat\x1b[0m\n\x1b[90m  â€¢ You're within range\x1b[0m\n\n\x1b[90mTry running the command again.\x1b[0m\n", e);
+        let error_message = format!("\n\x1b[91m❌ Connection failed\x1b[0m\n\x1b[90mReason: {}\x1b[0m\n\x1b[90mPlease check:\x1b[0m\n\x1b[90m  • Bluetooth is enabled\x1b[0m\n\x1b[90m  •  The other device is running BitChat\x1b[0m\n\x1b[90m •  You're within range\x1b[0m\n\n\x1b[90mTry running the command again.\x1b[0m\n", e);
         ui_tx.send(error_message).await.map_err(|e| e.to_string())?;
         return Err(format!("Connection failed: {}", e).into());
     }
@@ -140,229 +110,222 @@ async fn setup_bluetooth_connection(ui_tx: mpsc::Sender<String>) -> Result<Perip
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // --- Start of I/O Refactoring ---
-    // Channel for user input from the input handler task
+    // Channel for user input from the TUI input box
     let (input_tx, mut input_rx) = mpsc::channel::<String>(10);
     // Channel for all UI output. All parts of the application will send strings here.
     let (ui_tx, mut ui_rx) = mpsc::channel::<String>(100);
 
-    // The UI task. It's the ONLY part of the app that writes to stdout.
-    // To switch to a TUI, you would only need to change this task.
-    let _ui_handle = tokio::spawn(async move {
-        while let Some(output) = ui_rx.recv().await {
-            print!("{}", output);
-            // We need to flush to ensure prompts are displayed immediately.
-            use std::io::{self as stdio, Write};
-            let _ = stdio::stdout().flush();
+    // Initialize the TUI
+    let mut terminal = tui_mod::init().expect("Failed to initialize TUI");
+    let mut app = App::new();
+
+    // Spawn Bluetooth connection setup in the background
+    let ui_tx_clone = ui_tx.clone();
+    let mut bt_handle = Some(tokio::spawn(async move {
+        match setup_bluetooth_connection(ui_tx_clone.clone()).await {
+            Ok(peripheral) => {
+                let _ = ui_tx_clone.send("__CONNECTED__".to_string()).await;
+                Ok(peripheral)
+            },
+            Err(e) => {
+                let _ = ui_tx_clone.send(format!("__ERROR__{}", e)).await;
+                Err(e)
+            }
         }
-    });
-    // --- End of I/O Refactoring ---
+    }));
 
-    let args: Vec<String> = env::args().collect();
-    
-    // Check for debug flags and send output to the UI channel
-    unsafe {
-        if args.iter().any(|arg| arg == "-dd" || arg == "--debug-full") {
-            DEBUG_LEVEL = DebugLevel::Full;
-            ui_tx.send("ðŸ› Debug mode: FULL (verbose output)\n".to_string()).await?;
-        } else if args.iter().any(|arg| arg == "-d" || arg == "--debug") {
-            DEBUG_LEVEL = DebugLevel::Basic;
-            ui_tx.send("ðŸ› Debug mode: BASIC (connection info)\n".to_string()).await?;
-        }
-    }
+    // State for after connection
+    let mut peripheral: Option<Peripheral> = None;
+    let mut notification_stream = None;
+    let mut characteristics = None;
+    let mut cmd_char = None;
+    let mut post_connect_initialized = false;
+    let mut my_peer_id = String::new();
+    let mut app_state: Option<persistence::AppState> = None;
+    let mut nickname = String::new();
+    let mut encryption_service = None;
+    let mut key_exchange_payload = None;
+    let mut key_exchange_packet = None;
+    let mut peers: Option<Arc<Mutex<HashMap<String, Peer>>>> = None;
+    let mut bloom: Option<Bloom<String>> = None;
+    let mut fragment_collector: Option<FragmentCollector> = None;
+    let mut delivery_tracker: Option<DeliveryTracker> = None;
+    let mut chat_context: Option<ChatContext> = None;
+    let mut channel_keys: Option<HashMap<String, [u8; 32]>> = None;
+    let mut _chat_messages: Option<HashMap<String, Vec<String>>> = None;
+    let mut blocked_peers: Option<HashSet<String>> = None;
+    let mut channel_creators: Option<HashMap<String, String>> = None;
+    let mut password_protected_channels: Option<HashSet<String>> = None;
+    let mut channel_key_commitments: Option<HashMap<String, String>> = None;
+    let mut discovered_channels: Option<HashSet<String>> = None;
+    let mut favorites: Option<HashSet<String>> = None;
+    let mut identity_key: Option<Vec<u8>> = None;
+    let mut create_app_state: Option<Box<dyn Fn(&HashSet<String>, &HashMap<String, String>, &Vec<String>, &HashSet<String>, &HashMap<String, String>, &HashMap<String, persistence::EncryptedPassword>, &str) -> AppState + Send + Sync>> = None;
 
-    // Spawn the input handler, giving it the input channel sender and the UI channel sender
-    let _input_handle = spawn_input_handler(input_tx, ui_tx.clone());
-
-    // Setup bluetooth, passing the UI channel sender for status messages
-    let peripheral = setup_bluetooth_connection(ui_tx.clone()).await?;
-
-    peripheral.discover_services().await?;
-    let characteristics = peripheral.characteristics();
-    let cmd_char = characteristics.iter().find(|c| c.uuid == BITCHAT_CHARACTERISTIC_UUID).expect("Characteristic not found.");
-    peripheral.subscribe(cmd_char).await?;
-    let mut notification_stream = peripheral.notifications().await?;
-    
-    // Replicate debug_println! logic using the UI channel
-    if unsafe { DEBUG_LEVEL >= DebugLevel::Basic } {
-        ui_tx.send("[2] Connection established.\n".to_string()).await?;
-    }
-    
-    if unsafe { DEBUG_LEVEL >= DebugLevel::Basic } {
-        ui_tx.send("[3] Performing handshake...\n".to_string()).await?;
-    }
-
-    let mut peer_id_bytes = [0u8; 4];
-    rand::thread_rng().fill(&mut peer_id_bytes);
-    let my_peer_id = hex::encode(&peer_id_bytes);
-    
-    if unsafe { DEBUG_LEVEL >= DebugLevel::Full } {
-        ui_tx.send(format!("[DEBUG] My peer ID: {}\n", my_peer_id)).await?;
-    }
-    
-    let mut app_state = load_state();
-    let mut nickname = app_state.nickname.clone().unwrap_or_else(|| "my-rust-client".to_string());
-    
-    let encryption_service = Arc::new(EncryptionService::new());
-    let (key_exchange_payload, _) = generate_keys_and_payload(&encryption_service);
-    let key_exchange_packet = create_bitchat_packet(&my_peer_id, MessageType::KeyExchange, key_exchange_payload);
-    peripheral.write(cmd_char, &key_exchange_packet, WriteType::WithoutResponse).await?;
-    
-    time::sleep(Duration::from_millis(500)).await;
-
-    let announce_packet = create_bitchat_packet(&my_peer_id, MessageType::Announce, nickname.as_bytes().to_vec());
-    peripheral.write(cmd_char, &announce_packet, WriteType::WithoutResponse).await?;
-
-    if unsafe { DEBUG_LEVEL >= DebugLevel::Basic } {
-        ui_tx.send("[3] Handshake sent. You can now chat.\n".to_string()).await?;
-    }
-    if app_state.nickname.is_some() {
-        ui_tx.send(format!("\x1b[90mÂ» Using saved nickname: {}\x1b[0m\n", nickname)).await?;
-    }
-    ui_tx.send("\x1b[90mÂ» Type /status to see connection info\x1b[0m\n".to_string()).await?;
-
-    // --- State Initialization (unchanged) ---
-    let peers: Arc<Mutex<HashMap<String, Peer>>> = Arc::new(Mutex::new(HashMap::new()));
-    let mut bloom = Bloom::new_for_fp_rate(500, 0.01);
-    let mut fragment_collector = FragmentCollector::new();
-    let mut delivery_tracker = DeliveryTracker::new();
-    let mut chat_context = ChatContext::new();
-    let mut channel_keys: HashMap<String, [u8; 32]> = HashMap::new();
-    let mut _chat_messages: HashMap<String, Vec<String>> = HashMap::new();
-    let mut blocked_peers = app_state.blocked_peers.clone();
-    let mut channel_creators = app_state.channel_creators.clone();
-    let mut password_protected_channels = app_state.password_protected_channels.clone();
-    let mut channel_key_commitments = app_state.channel_key_commitments.clone();
-    let mut discovered_channels: HashSet<String> = HashSet::new();
-    
-    if let Some(identity_key) = &app_state.identity_key {
-        for (channel, encrypted_password) in &app_state.encrypted_channel_passwords {
-            match decrypt_password(encrypted_password, identity_key) {
-                Ok(password) => {
-                    let key = EncryptionService::derive_channel_key(&password, channel);
-                    channel_keys.insert(channel.clone(), key);
-                    if unsafe { DEBUG_LEVEL >= DebugLevel::Basic } {
-                         ui_tx.send(format!("[CHANNEL] Restored key for password-protected channel: {}\n", channel)).await?;
+    let mut last_tick = std::time::Instant::now();
+    let tick_rate = StdDuration::from_millis(100);
+    'mainloop: loop {
+        // 1. Handle UI messages
+        while let Ok(msg) = ui_rx.try_recv() {
+            if msg == "__CONNECTED__" {
+                app.transition_to_connected();
+                if let Some(state) = app_state.as_mut() {
+                    app.nickname = state.nickname.clone().unwrap_or_else(|| "rust-client".to_string());
+                }
+                // Await the bt_handle to get the peripheral
+                if peripheral.is_none() {
+                    if let Ok(Ok(periph)) = bt_handle.take().unwrap().await {
+                        peripheral = Some(periph);
                     }
                 }
-                Err(e) => {
-                    if unsafe { DEBUG_LEVEL >= DebugLevel::Basic } {
-                        ui_tx.send(format!("[CHANNEL] Failed to restore key for {}: {}\n", channel, e)).await?;
-                   }
-                }
+            } else if msg.starts_with("__ERROR__") {
+                let err = msg.trim_start_matches("__ERROR__").to_string();
+                app.transition_to_error(err);
+            } else if matches!(app.phase, tui::app::TuiPhase::Connecting) {
+                app.add_popup_message(msg);
+            } else {
+                app.add_log_message(msg);
             }
         }
-    }
-    
-    let favorites = app_state.favorites.clone();
-    let identity_key = app_state.identity_key.clone();
-    
-    let create_app_state = |blocked: &HashSet<String>, 
-                           creators: &HashMap<String, String>,
-                           channels: &Vec<String>,
-                           protected: &HashSet<String>,
-                           commitments: &HashMap<String, String>,
-                           encrypted_passwords: &HashMap<String, persistence::EncryptedPassword>,
-                           current_nickname: &str| -> AppState {
-        AppState {
-            nickname: Some(current_nickname.to_string()),
-            blocked_peers: blocked.clone(),
-            channel_creators: creators.clone(),
-            joined_channels: channels.clone(),
-            password_protected_channels: protected.clone(),
-            channel_key_commitments: commitments.clone(),
-            favorites: favorites.clone(),
-            identity_key: identity_key.clone(),
-            encrypted_channel_passwords: encrypted_passwords.clone(),
+
+        // Post-connection initialization (only once)
+        if !post_connect_initialized && matches!(app.phase, tui::app::TuiPhase::Connected) {
+            if let Some(peripheral) = &peripheral {
+                // Discover services, get characteristics, subscribe, etc.
+                let _ = peripheral.discover_services().await;
+                let chars = peripheral.characteristics();
+                let cmd = chars.iter().find(|c| c.uuid == BITCHAT_CHARACTERISTIC_UUID).expect("Characteristic not found.").clone();
+                let _ = peripheral.subscribe(&cmd).await;
+                notification_stream = Some(peripheral.notifications().await.unwrap());
+                characteristics = Some(chars);
+                cmd_char = Some(cmd);
+                // All the rest of the state initialization from the old main goes here
+                // ...
+                // Generate peer_id, load state, etc.
+                let mut peer_id_bytes = [0u8; 4];
+                rand::thread_rng().fill(&mut peer_id_bytes);
+                my_peer_id = hex::encode(&peer_id_bytes);
+                app_state = Some(load_state());
+                nickname = app_state.as_ref().unwrap().nickname.clone().unwrap_or_else(|| "my-rust-client".to_string());
+                encryption_service = Some(Arc::new(EncryptionService::new()));
+                let (kxp, _) = generate_keys_and_payload(encryption_service.as_ref().unwrap());
+                key_exchange_payload = Some(kxp.clone());
+                key_exchange_packet = Some(create_bitchat_packet(&my_peer_id, MessageType::KeyExchange, kxp));
+                let _ = peripheral.write(&cmd_char.as_ref().unwrap(), &key_exchange_packet.as_ref().unwrap(), WriteType::WithoutResponse).await;
+                time::sleep(Duration::from_millis(500)).await;
+                let announce_packet = create_bitchat_packet(&my_peer_id, MessageType::Announce, nickname.as_bytes().to_vec());
+                let _ = peripheral.write(&cmd_char.as_ref().unwrap(), &announce_packet, WriteType::WithoutResponse).await;
+                // ... (rest of state initialization as before)
+                // Set up all the state variables as in the old main
+                peers = Some(Arc::new(Mutex::new(HashMap::new())));
+                bloom = Some(Bloom::new_for_fp_rate(500, 0.01));
+                fragment_collector = Some(FragmentCollector::new());
+                delivery_tracker = Some(DeliveryTracker::new());
+                chat_context = Some(ChatContext::new());
+                channel_keys = Some(HashMap::new());
+                _chat_messages = Some(HashMap::new());
+                blocked_peers = Some(app_state.as_ref().unwrap().blocked_peers.clone());
+                channel_creators = Some(app_state.as_ref().unwrap().channel_creators.clone());
+                password_protected_channels = Some(app_state.as_ref().unwrap().password_protected_channels.clone());
+                channel_key_commitments = Some(app_state.as_ref().unwrap().channel_key_commitments.clone());
+                discovered_channels = Some(HashSet::new());
+                favorites = Some(app_state.as_ref().unwrap().favorites.clone());
+                identity_key = app_state.as_ref().unwrap().identity_key.clone();
+                // ...
+                // Set up the create_app_state closure
+                let favs = favorites.clone();
+                let id_key = identity_key.clone();
+                create_app_state = Some(Box::new(move |blocked, creators, channels, protected, commitments, encrypted_passwords, current_nickname| {
+                    AppState {
+                        nickname: Some(current_nickname.to_string()),
+                        blocked_peers: blocked.clone(),
+                        channel_creators: creators.clone(),
+                        joined_channels: channels.clone(),
+                        password_protected_channels: protected.clone(),
+                        channel_key_commitments: commitments.clone(),
+                        favorites: favs.clone().unwrap_or_default(),
+                        identity_key: id_key.clone(),
+                        encrypted_channel_passwords: encrypted_passwords.clone(),
+                    }
+                }));
+                post_connect_initialized = true;
+            }
         }
-    };
-    // --- End of State Initialization ---
 
-    loop {
-        tokio::select! {
-            // Receive user input from the input channel
-            // In main.rs, inside the `loop` and `tokio::select!`
-
-            Some(line) = input_rx.recv() => {
-                // Clone the UI transmitter for each handler call
+        // 2. Handle Bluetooth notifications (async)
+        if let (Some(notification_stream), true) = (notification_stream.as_mut(), post_connect_initialized) {
+            if let Ok(Some(notification)) = tokio::time::timeout(std::time::Duration::from_millis(1), notification_stream.next()).await {
+                let mut peers_lock = peers.as_ref().unwrap().lock().await;
                 let ui_tx = ui_tx.clone();
-
-                if handle_number_switching(&line, &mut chat_context, ui_tx.clone()).await { continue; }
-                if handle_help_command(&line, ui_tx.clone()).await { continue; }
-                if handle_list_command(&line, &mut chat_context, ui_tx.clone()).await { continue; }
-                if handle_name_command(&line, &mut nickname, &my_peer_id, &peripheral, cmd_char, &blocked_peers, &channel_creators, &chat_context, &password_protected_channels, &channel_key_commitments, &app_state, &create_app_state, ui_tx.clone()).await { continue; }
-                if handle_join_command(&line, &password_protected_channels, &mut channel_keys, &mut discovered_channels, &mut chat_context, &channel_key_commitments, &mut app_state, &create_app_state, &nickname, &peripheral, cmd_char, &channel_creators, &blocked_peers, ui_tx.clone()).await { continue; }
-                if handle_exit_command(&line, &blocked_peers, &channel_creators, &chat_context, &password_protected_channels, &channel_key_commitments, &app_state, &create_app_state, &nickname, ui_tx.clone()).await { break; }
-                if handle_reply_command(&line, &mut chat_context, ui_tx.clone()).await { continue; }
-                if handle_public_command(&line, &mut chat_context, ui_tx.clone()).await { continue; }
-                if handle_online_command(&line, &peers, ui_tx.clone()).await { continue; }
-                if handle_channels_command(&line, &chat_context, &channel_keys, &password_protected_channels, ui_tx.clone()).await { continue; }
-                if handle_dm_command(&line, &mut chat_context, &peers, &nickname, &my_peer_id, &mut delivery_tracker, &encryption_service, &peripheral, cmd_char, ui_tx.clone()).await { continue; }
-                if handle_block_command(&line, &mut blocked_peers, &peers, &encryption_service, &channel_creators, &chat_context, &password_protected_channels, &channel_key_commitments, &app_state, &create_app_state, &nickname, ui_tx.clone()).await { continue; }
-                if handle_unblock_command(&line, &mut blocked_peers, &peers, &encryption_service, &channel_creators, &chat_context, &password_protected_channels, &channel_key_commitments, &app_state, &create_app_state, &nickname, ui_tx.clone()).await { continue; }
-                if handle_clear_command(&line, &chat_context, ui_tx.clone()).await { continue; }
-                if handle_status_command(&line, &peers, &chat_context, &nickname, &my_peer_id, ui_tx.clone()).await { continue; }
-                if handle_leave_command(&line, &mut chat_context, &mut channel_keys, &mut app_state, &my_peer_id, &peripheral, cmd_char, ui_tx.clone()).await { continue; }
-                if handle_pass_command(&line, &chat_context, &mut channel_creators, &mut channel_keys, &mut password_protected_channels, &mut app_state, &my_peer_id, &peripheral, cmd_char, ui_tx.clone()).await { continue; }
-                if handle_transfer_command(&line, &chat_context, &mut channel_creators, &password_protected_channels, &channel_keys, &my_peer_id, &peers, &peripheral, cmd_char, ui_tx.clone()).await { continue; }
-                
-                if line.starts_with("/") {
-                    let unknown_cmd_msg = format!("\x1b[93mâš  Unknown command: {}\x1b[0m\n\x1b[90mType /help to see available commands.\x1b[0m\n", line.split_whitespace().next().unwrap_or(""));
-                    let _ = ui_tx.send(unknown_cmd_msg).await;
-                    continue;
+                match parse_bitchat_packet(&notification.value) {
+                    Ok(packet) => {
+                        if packet.sender_id_str == my_peer_id { continue; }
+                        match packet.msg_type {
+                            MessageType::Announce => handle_announce_message(&packet, &mut peers_lock, ui_tx.clone()).await,
+                            MessageType::Message => handle_message_packet(&packet, &notification.value, &mut peers_lock, bloom.as_mut().unwrap(), discovered_channels.as_mut().unwrap(), password_protected_channels.as_mut().unwrap(), channel_keys.as_mut().unwrap(), chat_context.as_mut().unwrap(), delivery_tracker.as_mut().unwrap(), encryption_service.as_ref().unwrap(), peripheral.as_ref().unwrap(), cmd_char.as_ref().unwrap(), &nickname, &my_peer_id, blocked_peers.as_ref().unwrap(), ui_tx.clone()).await,
+                            MessageType::FragmentStart | MessageType::FragmentContinue | MessageType::FragmentEnd => handle_fragment_packet(&packet, &notification.value, fragment_collector.as_mut().unwrap(), &mut peers_lock, bloom.as_mut().unwrap(), discovered_channels.as_mut().unwrap(), password_protected_channels.as_mut().unwrap(), chat_context.as_mut().unwrap(), encryption_service.as_ref().unwrap(), peripheral.as_ref().unwrap(), cmd_char.as_ref().unwrap(), &nickname, &my_peer_id, blocked_peers.as_ref().unwrap(), ui_tx.clone()).await,
+                            MessageType::KeyExchange => handle_key_exchange_message(&packet, &mut peers_lock, encryption_service.as_ref().unwrap(), peripheral.as_ref().unwrap(), cmd_char.as_ref().unwrap(), &my_peer_id, ui_tx.clone()).await,
+                            MessageType::Leave => handle_leave_message(&packet, &mut peers_lock, chat_context.as_ref().unwrap(), ui_tx.clone()).await,
+                            MessageType::ChannelAnnounce => handle_channel_announce_message(&packet, channel_creators.as_mut().unwrap(), password_protected_channels.as_mut().unwrap(), channel_keys.as_mut().unwrap(), channel_key_commitments.as_mut().unwrap(), chat_context.as_mut().unwrap(), blocked_peers.as_ref().unwrap(), &app_state.as_ref().unwrap().encrypted_channel_passwords, &nickname, create_app_state.as_ref().unwrap().as_ref(), ui_tx.clone()).await,
+                            MessageType::DeliveryAck => handle_delivery_ack_message(&packet, &notification.value, encryption_service.as_ref().unwrap(), delivery_tracker.as_mut().unwrap(), peripheral.as_ref().unwrap(), cmd_char.as_ref().unwrap(), &my_peer_id, ui_tx.clone()).await,
+                            MessageType::DeliveryStatusRequest => handle_delivery_status_request_message(&packet, ui_tx.clone()).await,
+                            MessageType::ReadReceipt => handle_read_receipt_message(&packet, ui_tx.clone()).await,
+                            _ => {}
+                        }
+                    },
+                    Err(_e) => { /* Silently ignore unparseable packets */ }
                 }
-                
-                if let ChatMode::PrivateDM { nickname: target_nickname, peer_id: target_peer_id } = &chat_context.current_mode {
-                    handle_private_dm_message(&line, &nickname, &my_peer_id, target_nickname, target_peer_id, &mut delivery_tracker, &encryption_service, &peripheral, cmd_char, &chat_context, ui_tx.clone()).await;
-                    continue;
-                }
-                
-                handle_regular_message(&line, &nickname, &my_peer_id, &chat_context, &password_protected_channels, &mut channel_keys, &encryption_service, &mut delivery_tracker, &peripheral, cmd_char, ui_tx.clone()).await;
-            },
-
-
-            Some(notification) = notification_stream.next() => {
-    if unsafe { DEBUG_LEVEL >= DebugLevel::Full } {
-        if notification.value.len() >= 2 {
-            let msg_type = notification.value[1];
-            // The ui_tx channel is already available here.
-            let _ = ui_tx.send(format!("[PACKET] Received {} bytes, type: 0x{:02X}\n", notification.value.len(), msg_type)).await;
-        }
-    }
-    
-    match parse_bitchat_packet(&notification.value) {
-        Ok(packet) => {
-            if packet.sender_id_str == my_peer_id { continue; }
-            let mut peers_lock = peers.lock().unwrap();
-
-            // Clone the UI channel for each handler
-            let ui_tx = ui_tx.clone();
-
-            match packet.msg_type {
-                MessageType::Announce => handle_announce_message(&packet, &mut peers_lock, ui_tx).await,
-                MessageType::Message => handle_message_packet(&packet, &notification.value, &mut peers_lock, &mut bloom, &mut discovered_channels, &mut password_protected_channels, &mut channel_keys, &mut chat_context, &mut delivery_tracker, &encryption_service, &peripheral, cmd_char, &nickname, &my_peer_id, &blocked_peers, ui_tx).await,
-                MessageType::FragmentStart | MessageType::FragmentContinue | MessageType::FragmentEnd => handle_fragment_packet(&packet, &notification.value, &mut fragment_collector, &mut peers_lock, &mut bloom, &mut discovered_channels, &mut password_protected_channels, &mut chat_context, &encryption_service, &peripheral, cmd_char, &nickname, &my_peer_id, &blocked_peers, ui_tx).await,
-                MessageType::KeyExchange => handle_key_exchange_message(&packet, &mut peers_lock, &encryption_service, &peripheral, cmd_char, &my_peer_id, ui_tx).await,
-                MessageType::Leave => handle_leave_message(&packet, &mut peers_lock, &chat_context, ui_tx).await,
-                MessageType::ChannelAnnounce => handle_channel_announce_message(&packet, &mut channel_creators, &mut password_protected_channels, &mut channel_keys, &mut channel_key_commitments, &mut chat_context, &blocked_peers, &app_state.encrypted_channel_passwords, &nickname, &create_app_state, ui_tx).await,
-                MessageType::DeliveryAck => handle_delivery_ack_message(&packet, &notification.value, &encryption_service, &mut delivery_tracker, &peripheral, cmd_char, &my_peer_id, ui_tx).await,
-                MessageType::DeliveryStatusRequest => handle_delivery_status_request_message(&packet, ui_tx).await,
-                MessageType::ReadReceipt => handle_read_receipt_message(&packet, ui_tx).await,
-                _ => {}
             }
-        },
-        Err(_e) => { /* Silently ignore unparseable packets */ }
-    }
-},
-
-             _ = tokio::signal::ctrl_c() => { break; }
         }
-    }
 
-    if unsafe { DEBUG_LEVEL >= DebugLevel::Basic } {
-        ui_tx.send("\n[+] Disconnecting...\n".to_string()).await?;
+        // 3. Handle input events
+        if crossterm_event::poll(tick_rate.saturating_sub(last_tick.elapsed())).unwrap_or(false) {
+            if let CrosstermEvent::Key(key_event) = crossterm_event::read().unwrap() {
+                event::handle_key_event(&mut app, key_event, &input_tx);
+            }
+        }
+        // 4. Handle input from the input box (from input_rx)
+        while let Ok(line) = input_rx.try_recv() {
+            let ui_tx = ui_tx.clone();
+            if handle_number_switching(&line, chat_context.as_mut().unwrap(), ui_tx.clone()).await { continue; }
+            if handle_help_command(&line, ui_tx.clone()).await { continue; }
+            if handle_list_command(&line, chat_context.as_mut().unwrap(), ui_tx.clone()).await { continue; }
+            if handle_name_command(&line, &mut nickname, &my_peer_id, peripheral.as_ref().unwrap(), cmd_char.as_ref().unwrap(), blocked_peers.as_ref().unwrap(), channel_creators.as_ref().unwrap(), chat_context.as_mut().unwrap(), password_protected_channels.as_ref().unwrap(), channel_key_commitments.as_ref().unwrap(), app_state.as_ref().unwrap(), create_app_state.as_ref().unwrap().as_ref(), ui_tx.clone()).await { continue; }
+            if handle_join_command(&line, password_protected_channels.as_ref().unwrap(), channel_keys.as_mut().unwrap(), discovered_channels.as_mut().unwrap(), chat_context.as_mut().unwrap(), channel_key_commitments.as_mut().unwrap(), app_state.as_mut().unwrap(), create_app_state.as_ref().unwrap().as_ref(), &nickname, peripheral.as_ref().unwrap(), cmd_char.as_ref().unwrap(), channel_creators.as_ref().unwrap(), blocked_peers.as_ref().unwrap(), ui_tx.clone()).await { continue; }
+            if handle_exit_command(&line, blocked_peers.as_ref().unwrap(), channel_creators.as_ref().unwrap(), chat_context.as_ref().unwrap(), password_protected_channels.as_ref().unwrap(), channel_key_commitments.as_ref().unwrap(), app_state.as_ref().unwrap(), create_app_state.as_ref().unwrap().as_ref(), &nickname, ui_tx.clone()).await { break; }
+            if handle_reply_command(&line, chat_context.as_mut().unwrap(), ui_tx.clone()).await { continue; }
+            if handle_public_command(&line, chat_context.as_mut().unwrap(), ui_tx.clone()).await { continue; }
+            if handle_online_command(&line, peers.as_ref().unwrap(), ui_tx.clone()).await { continue; }
+            if handle_channels_command(&line, chat_context.as_ref().unwrap(), channel_keys.as_ref().unwrap(), password_protected_channels.as_ref().unwrap(), ui_tx.clone()).await { continue; }
+            if handle_dm_command(&line, chat_context.as_mut().unwrap(), peers.as_ref().unwrap(), &nickname, &my_peer_id, delivery_tracker.as_mut().unwrap(), encryption_service.as_ref().unwrap(), peripheral.as_ref().unwrap(), cmd_char.as_ref().unwrap(), ui_tx.clone()).await { continue; }
+            if handle_block_command(&line, blocked_peers.as_mut().unwrap(), peers.as_ref().unwrap(), encryption_service.as_ref().unwrap(), channel_creators.as_ref().unwrap(), chat_context.as_mut().unwrap(), password_protected_channels.as_ref().unwrap(), channel_key_commitments.as_ref().unwrap(), app_state.as_ref().unwrap(), create_app_state.as_ref().unwrap().as_ref(), &nickname, ui_tx.clone()).await { continue; }
+            if handle_unblock_command(&line, blocked_peers.as_mut().unwrap(), peers.as_ref().unwrap(), encryption_service.as_ref().unwrap(), channel_creators.as_ref().unwrap(), chat_context.as_mut().unwrap(), password_protected_channels.as_ref().unwrap(), channel_key_commitments.as_ref().unwrap(), app_state.as_ref().unwrap(), create_app_state.as_ref().unwrap().as_ref(), &nickname, ui_tx.clone()).await { continue; }
+            if handle_clear_command(&line, chat_context.as_mut().unwrap(), ui_tx.clone()).await { continue; }
+            if handle_status_command(&line, peers.as_ref().unwrap(), chat_context.as_ref().unwrap(), &nickname, &my_peer_id, ui_tx.clone()).await { continue; }
+            if handle_leave_command(&line, chat_context.as_mut().unwrap(), channel_keys.as_mut().unwrap(), app_state.as_mut().unwrap(), &my_peer_id, peripheral.as_ref().unwrap(), cmd_char.as_ref().unwrap(), ui_tx.clone()).await { continue; }
+            if handle_pass_command(&line, chat_context.as_ref().unwrap(), channel_creators.as_mut().unwrap(), channel_keys.as_mut().unwrap(), password_protected_channels.as_mut().unwrap(), app_state.as_mut().unwrap(), &my_peer_id, peripheral.as_ref().unwrap(), cmd_char.as_ref().unwrap(), ui_tx.clone()).await { continue; }
+            if handle_transfer_command(&line, chat_context.as_ref().unwrap(), channel_creators.as_mut().unwrap(), password_protected_channels.as_ref().unwrap(), channel_keys.as_ref().unwrap(), &my_peer_id, peers.as_ref().unwrap(), peripheral.as_ref().unwrap(), cmd_char.as_ref().unwrap(), ui_tx.clone()).await { continue; }
+            if line.starts_with("/") {
+                let unknown_cmd_msg = format!("\x1b[93m⚠  Unknown command: {}\x1b[0m\n\x1b[90mType /help to see available commands.\x1b[0m\n", line.split_whitespace().next().unwrap_or(""));
+                let _ = ui_tx.send(unknown_cmd_msg).await;
+                continue;
+            }
+            if let ChatMode::PrivateDM { nickname: target_nickname, peer_id: target_peer_id } = &chat_context.as_ref().unwrap().current_mode {
+                handle_private_dm_message(&line, &nickname, &my_peer_id, target_nickname, target_peer_id, delivery_tracker.as_mut().unwrap(), encryption_service.as_ref().unwrap(), peripheral.as_ref().unwrap(), cmd_char.as_ref().unwrap(), chat_context.as_ref().unwrap(), ui_tx.clone()).await;
+                continue;
+            }
+            handle_regular_message(&line, &nickname, &my_peer_id, chat_context.as_ref().unwrap(), password_protected_channels.as_ref().unwrap(), channel_keys.as_mut().unwrap(), encryption_service.as_ref().unwrap(), delivery_tracker.as_mut().unwrap(), peripheral.as_ref().unwrap(), cmd_char.as_ref().unwrap(), ui_tx.clone()).await;
+        }
+        // 5. Render the UI
+        terminal.draw(|f| ui::render(&mut app, f)).unwrap();
+        // 6. Exit if requested
+        if app.should_quit {
+            break 'mainloop;
+        }
+        last_tick = std::time::Instant::now();
     }
-
+    // Restore the terminal
+    tui_mod::restore().expect("Failed to restore terminal");
     Ok(())
 }
 

@@ -1,4 +1,3 @@
-
 use std::collections::{HashMap, HashSet};
 use btleplug::api::{WriteType, Peripheral as _};
 use btleplug::platform::Peripheral;
@@ -12,6 +11,7 @@ use crate::packet_creation::{create_bitchat_packet_with_recipient_and_signature,
 use crate::payload_handling::{create_bitchat_message_payload_full, create_bitchat_message_payload, create_encrypted_channel_message_payload};
 use crate::fragmentation::{send_packet_with_fragmentation, should_fragment};
 use std::error::Error;
+
 
 // Handler for private DM messages
 pub async fn handle_private_dm_message(

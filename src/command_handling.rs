@@ -1,5 +1,6 @@
 use std::collections::{HashMap, HashSet};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+use tokio::sync::Mutex;
 use btleplug::api::{WriteType, Peripheral as _};
 use btleplug::platform::Peripheral;
 use tokio::sync::mpsc;
@@ -211,7 +212,7 @@ pub async fn handle_public_command(line: &str, chat_context: &mut ChatContext, u
 
 pub async fn handle_online_command(line: &str, peers: &Arc<Mutex<HashMap<String, Peer>>>, ui_tx: mpsc::Sender<String>) -> bool {
     if line == "/online" || line == "/w" {
-        let peers_lock = peers.lock().unwrap();
+        let peers_lock = peers.lock().await;
         if peers_lock.is_empty() {
             let _ = ui_tx.send("» No one else is online right now.\n".to_string()).await;
         } else {
@@ -279,7 +280,7 @@ pub async fn handle_dm_command(
         }
         let target_nickname = parts[1];
         let peer_id = {
-            peers.lock().unwrap().iter()
+            peers.lock().await.iter()
                 .find(|(_, peer)| peer.nickname.as_deref() == Some(target_nickname))
                 .map(|(id, _)| id.clone())
         };
@@ -334,7 +335,7 @@ pub async fn handle_block_command(
         let parts: Vec<&str> = line.split_whitespace().collect();
         if parts.len() == 2 {
             let target_name = parts[1].trim_start_matches('@');
-            let peer_id_to_block = peers.lock().unwrap().iter()
+            let peer_id_to_block = peers.lock().await.iter()
                 .find(|(_, peer)| peer.nickname.as_deref() == Some(target_name))
                 .map(|(id, _)| id.clone());
 
@@ -373,7 +374,7 @@ pub async fn handle_unblock_command(
 ) -> bool {
     if line.starts_with("/unblock ") {
         let target_name = line.trim_start_matches("/unblock ").trim().trim_start_matches('@');
-        let peer_id_to_unblock = peers.lock().unwrap().iter()
+        let peer_id_to_unblock = peers.lock().await.iter()
             .find(|(_, peer)| peer.nickname.as_deref() == Some(target_name))
             .map(|(id, _)| id.clone());
 
@@ -430,7 +431,7 @@ pub async fn handle_status_command(
     ui_tx: mpsc::Sender<String>,
 ) -> bool {
     if line == "/status" {
-        let peer_count = peers.lock().unwrap().len();
+        let peer_count = peers.lock().await.len();
         let channel_count = chat_context.active_channels.len();
         let dm_count = chat_context.active_dms.len();
         
@@ -544,7 +545,7 @@ pub async fn handle_transfer_command(
         if let ChatMode::Channel(channel) = &chat_context.current_mode {
             if channel_creators.get(channel).map_or(false, |owner| owner == my_peer_id) {
                 let target_name = line.trim_start_matches("/transfer ").trim().trim_start_matches('@');
-                let target_peer_id = peers.lock().unwrap().iter()
+                let target_peer_id = peers.lock().await.iter()
                     .find(|(_, peer)| peer.nickname.as_deref() == Some(target_name))
                     .map(|(id, _)| id.clone());
 
