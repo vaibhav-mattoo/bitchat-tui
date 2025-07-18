@@ -8,7 +8,7 @@ use ratatui::{
     widgets::{Block, Borders, List, ListItem, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState},
 };
 
-use crate::tui::app::App;
+use crate::tui::app::{App, FocusArea};
 
 pub fn render(f: &mut Frame, app: &mut App, area: Rect) {
     let chunks = Layout::default()
@@ -50,8 +50,13 @@ pub fn render(f: &mut Frame, app: &mut App, area: Rect) {
         ListItem::new(line)
     }).collect();
 
+    let border_style = if app.focus_area == FocusArea::MainPanel {
+        Style::default().fg(Color::Green)
+    } else {
+        Style::default()
+    };
     let list = List::new(msg_items)
-        .block(Block::default().borders(Borders::ALL).title("Messages"));
+        .block(Block::default().borders(Borders::ALL).title("Messages").border_style(border_style));
 
     f.render_widget(list, messages_area);
     

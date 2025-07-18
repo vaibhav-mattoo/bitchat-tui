@@ -1,11 +1,10 @@
-
 // src/tui/event.rs
 
 use crossterm::event::{Event as CrosstermEvent, KeyCode, KeyEvent, KeyModifiers};
 use tokio::sync::mpsc;
 use tui_input::backend::crossterm::EventHandler;
 
-use crate::tui::app::App;
+use crate::tui::app::{App, FocusArea};
 use crate::tui::widgets::sidebar::sidebar_visible_items;
 
 pub fn handle_key_event(app: &mut App, key_event: KeyEvent, input_tx: &mpsc::Sender<String>) {
@@ -15,10 +14,20 @@ pub fn handle_key_event(app: &mut App, key_event: KeyEvent, input_tx: &mpsc::Sen
         return;
     }
 
-    if app.sidebar_focus {
-        handle_sidebar_events(app, key_event);
-    } else {
-        handle_main_events(app, key_event, input_tx);
+    // Handle tab switching
+    if key_event.code == KeyCode::Tab {
+        app.focus_area = match app.focus_area {
+            FocusArea::Sidebar => FocusArea::MainPanel,
+            FocusArea::MainPanel => FocusArea::InputBox,
+            FocusArea::InputBox => FocusArea::Sidebar,
+        };
+        return;
+    }
+
+    match app.focus_area {
+        FocusArea::Sidebar => handle_sidebar_events(app, key_event),
+        FocusArea::MainPanel => handle_main_panel_events(app, key_event),
+        FocusArea::InputBox => handle_input_events(app, key_event, input_tx),
     }
 }
 
@@ -27,7 +36,7 @@ fn handle_sidebar_events(app: &mut App, key_event: KeyEvent) {
     let current_selection = app.sidebar_flat_selected;
 
     match key_event.code {
-        KeyCode::Tab => app.sidebar_focus = false,
+        KeyCode::Tab => app.focus_area = FocusArea::MainPanel,
         KeyCode::Down => {
             if !visible_items.is_empty() {
                 app.sidebar_flat_selected = (current_selection + 1) % visible_items.len();
@@ -64,12 +73,12 @@ fn handle_sidebar_events(app: &mut App, key_event: KeyEvent) {
     }
 }
 
-fn handle_main_events(app: &mut App, key_event: KeyEvent, input_tx: &mpsc::Sender<String>) {
+fn handle_main_panel_events(app: &mut App, key_event: KeyEvent) {
     let (messages, _, _) = app.get_current_messages();
     let total_messages = messages.len();
 
     match key_event.code {
-        KeyCode::Tab => app.sidebar_focus = true,
+        KeyCode::Tab => app.focus_area = FocusArea::InputBox,
         KeyCode::Up => {
             app.msg_scroll = app.msg_scroll.saturating_sub(1);
         }
@@ -86,6 +95,12 @@ fn handle_main_events(app: &mut App, key_event: KeyEvent, input_tx: &mpsc::Sende
                 app.msg_scroll = (app.msg_scroll + 10).min(total_messages - 1);
             }
         }
+        _ => {}
+    }
+}
+
+fn handle_input_events(app: &mut App, key_event: KeyEvent, input_tx: &mpsc::Sender<String>) {
+    match key_event.code {
         KeyCode::Enter => {
             let input_str = app.input.value().to_string();
             if !input_str.is_empty() {

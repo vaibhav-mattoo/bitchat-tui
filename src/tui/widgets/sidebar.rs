@@ -8,7 +8,7 @@ use ratatui::{
     widgets::{Block, Borders, List, ListItem},
 };
 
-use crate::tui::app::App;
+use crate::tui::app::{App, FocusArea};
 
 // Helper to calculate what items are visible for navigation
 pub fn sidebar_visible_items(app: &App) -> Vec<(usize, Option<usize>)> {
@@ -42,7 +42,7 @@ pub fn render(f: &mut Frame, app: &App, area: Rect) {
 
     for (i, section_title) in section_titles.iter().enumerate() {
         let is_selected = app.sidebar_flat_selected == flat_idx;
-        let mut style = if is_selected && app.sidebar_focus {
+        let mut style = if is_selected && app.focus_area == FocusArea::Sidebar {
             Style::default().bg(Color::Blue).fg(Color::White)
         } else {
             Style::default()
@@ -66,7 +66,7 @@ pub fn render(f: &mut Frame, app: &App, area: Rect) {
 
             for (item_str, color, is_active_conv) in list {
                 let is_selected = app.sidebar_flat_selected == flat_idx;
-                style = if is_selected && app.sidebar_focus {
+                style = if is_selected && app.focus_area == FocusArea::Sidebar {
                     Style::default().bg(Color::Blue).fg(Color::White)
                 } else {
                     Style::default().fg(color)
@@ -83,12 +83,12 @@ pub fn render(f: &mut Frame, app: &App, area: Rect) {
             if i == 3 { // Settings
                  // Nickname
                 let is_selected = app.sidebar_flat_selected == flat_idx;
-                style = if is_selected && app.sidebar_focus { Style::default().bg(Color::Blue).fg(Color::White) } else { Style::default() };
+                style = if is_selected && app.focus_area == FocusArea::Sidebar { Style::default().bg(Color::Blue).fg(Color::White) } else { Style::default() };
                 items.push(ListItem::new(Line::from(vec![Span::raw("  "), Span::styled(format!("Nick: {}", app.nickname), style)])));
                 flat_idx += 1;
                 // Status
                 let is_selected = app.sidebar_flat_selected == flat_idx;
-                style = if is_selected && app.sidebar_focus { Style::default().bg(Color::Blue).fg(Color::White) } else { Style::default() };
+                style = if is_selected && app.focus_area == FocusArea::Sidebar { Style::default().bg(Color::Blue).fg(Color::White) } else { Style::default() };
                 items.push(ListItem::new(Line::from(vec![
                     Span::raw("  "),
                     Span::styled("Status: ", style),
@@ -102,6 +102,11 @@ pub fn render(f: &mut Frame, app: &App, area: Rect) {
         }
     }
 
-    let list = List::new(items).block(Block::default().borders(Borders::ALL).title("Navigation"));
+    let border_style = if app.focus_area == FocusArea::Sidebar {
+        Style::default().fg(Color::Green)
+    } else {
+        Style::default()
+    };
+    let list = List::new(items).block(Block::default().borders(Borders::ALL).title("Navigation").border_style(border_style));
     f.render_widget(list, area);
 }

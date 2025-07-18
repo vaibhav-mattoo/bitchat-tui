@@ -52,12 +52,19 @@ pub enum TuiPhase {
     Error(String),
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FocusArea {
+    Sidebar,
+    MainPanel,
+    InputBox,
+}
+
 pub struct App {
     // UI state
     pub input: Input,
     pub phase: TuiPhase,
     pub should_quit: bool,
-    pub sidebar_focus: bool,
+    pub focus_area: FocusArea,
     pub sidebar_flat_selected: usize,
     pub msg_scroll: usize,
     
@@ -91,7 +98,7 @@ impl App {
             input: Input::default(),
             phase: TuiPhase::Connecting,
             should_quit: false,
-            sidebar_focus: true,
+            focus_area: FocusArea::InputBox,
             sidebar_flat_selected: 0,
             msg_scroll: 0,
             nickname: "bitchat-user".to_string(),
