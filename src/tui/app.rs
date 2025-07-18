@@ -101,7 +101,7 @@ impl App {
             focus_area: FocusArea::InputBox,
             sidebar_flat_selected: 0,
             msg_scroll: 0,
-            nickname: "bitchat-user".to_string(),
+            nickname: "my-rust-client".to_string(),
             network_name: "BitChat Mesh".to_string(),
             connected: false,
             channels,
@@ -161,12 +161,22 @@ impl App {
             let sender = captures.get(2).unwrap().as_str().to_string();
             let content = captures.get(3).unwrap().as_str().to_string();
             
+            // Skip messages from the current user to avoid echo
+            if sender == self.nickname {
+                return;
+            }
+            
             let msg = Message { sender, timestamp, content, is_self: false };
             self.channel_messages.entry("#public".to_string()).or_default().push(msg);
             self.scroll_to_bottom_current_conversation();
             return;
         }
 
+        // Skip system messages that contain the current user's nickname to avoid echo
+        if trimmed.contains(&self.nickname) {
+            return;
+        }
+        
         let msg = Message {
             sender: "system".to_string(),
             timestamp: chrono::Local::now().format("%H:%M").to_string(),
