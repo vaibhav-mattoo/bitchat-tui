@@ -14,7 +14,7 @@ use crate::data_structures::{
     BitchatPacket, Peer, DeliveryTracker, FragmentCollector, BROADCAST_RECIPIENT,
     COVER_TRAFFIC_PREFIX, MessageType, DeliveryAck, DebugLevel, DEBUG_LEVEL
 };
-use crate::terminal_ux::{ChatContext, ChatMode, format_message_display};
+use crate::terminal_ux::{ChatContext, ChatMode};
 use crate::encryption::EncryptionService;
 use crate::payload_handling::{unpad_message, parse_bitchat_message_payload};
 use crate::packet_creation::{
@@ -205,22 +205,25 @@ pub async fn handle_message_packet(
                 chat_context.last_private_sender = Some((packet.sender_id_str.clone(), sender_nick.to_string()));
                 chat_context.add_dm(sender_nick, &packet.sender_id_str);
                 
-                let display = format_message_display(timestamp, sender_nick, &display_content, true, false, None, Some(nickname), nickname);
-                let _ = ui_tx.send(format!("\r\x1b[K{}\n", display)).await;
+                // Send structured message for TUI to parse
+                let structured_msg = format!("__DM__:{}:{}:{}", sender_nick, timestamp.format("%H%M"), display_content);
+                let _ = ui_tx.send(structured_msg).await;
                 
                 if !matches!(&chat_context.current_mode, ChatMode::PrivateDM { .. }) {
                     let _ = ui_tx.send("\x1b[90mÂ» /reply to respond\x1b[0m\n".to_string()).await;
                 }
                 let _ = ui_tx.send("> ".to_string()).await;
             } else {
-                let (is_channel, channel_name) = if let Some(ch) = &message.channel {
+                let (_, channel_name) = if let Some(ch) = &message.channel {
                     chat_context.add_channel(ch);
                     (true, Some(ch.as_str()))
                 } else {
                     (false, None)
                 };
-                let display = format_message_display(timestamp, sender_nick, &display_content, false, is_channel, channel_name, None, nickname);
-                let _ = ui_tx.send(format!("\r\x1b[K{}\n> ", display)).await;
+                // Send structured message for TUI to parse
+                let channel_key = channel_name.unwrap_or("#public");
+                let structured_msg = format!("__CHANNEL__:{}:{}:{}:{}", channel_key, sender_nick, timestamp.format("%H%M"), display_content);
+                let _ = ui_tx.send(structured_msg).await;
             }
          
             if should_send_ack(is_private_message, message.channel.as_deref(), None, nickname, peers_lock.len()) {
@@ -269,7 +272,7 @@ pub async fn handle_fragment_packet(
     encryption_service: &EncryptionService,
     peripheral: &Peripheral,
     cmd_char: &btleplug::api::Characteristic,
-    nickname: &str,
+    _nickname: &str,
     my_peer_id: &str,
     blocked_peers: &HashSet<String>,
     ui_tx: mpsc::Sender<String>,
@@ -314,8 +317,16 @@ pub async fn handle_fragment_packet(
                             if is_private_message && message.content.starts_with(COVER_TRAFFIC_PREFIX) { return; }
                             
                             let timestamp = chrono::Local::now();
-                            let display = format_message_display(timestamp, sender_nick, &message.content, is_private_message, message.channel.is_some(), message.channel.as_deref(), if is_private_message { Some(nickname) } else { None }, nickname);
-                            let _ = ui_tx.send(format!("\r\x1b[K{}\n> ", display)).await;
+                            
+                            // Send structured message for TUI to parse
+                            if is_private_message {
+                                let structured_msg = format!("__DM__:{}:{}:{}", sender_nick, timestamp.format("%H%M"), message.content);
+                                let _ = ui_tx.send(structured_msg).await;
+                            } else {
+                                let channel_key = message.channel.as_deref().unwrap_or("#public");
+                                let structured_msg = format!("__CHANNEL__:{}:{}:{}:{}", channel_key, sender_nick, timestamp.format("%H%M"), message.content);
+                                let _ = ui_tx.send(structured_msg).await;
+                            }
                             
                             if is_private_message {
                                 chat_context.last_private_sender = Some((reassembled.sender_id_str.clone(), sender_nick.to_string()));

@@ -3,7 +3,7 @@
 
 use ratatui::{
     prelude::{Frame, Rect},
-    style::{Color, Modifier, Style, Stylize},
+    style::{Color, Style, Stylize},
     text::{Line, Span},
     widgets::{Block, Borders, List, ListItem},
 };
@@ -50,8 +50,18 @@ pub fn render(f: &mut Frame, app: &App, area: Rect) {
         };
         
         let arrow = if app.sidebar_state.expanded[i] { "▼" } else { "▶" };
+        
+        // Add unread indicator for sections that can have unread messages
+        let unread_count = app.get_section_unread_count(i);
+        let unread_indicator = if unread_count > 0 {
+            Span::styled(" ●", Style::default().fg(Color::Rgb(255, 165, 0))) // Orange circle
+        } else {
+            Span::raw("")
+        };
+        
         let section_line = Line::from(vec![
             Span::styled(format!("{} {}", icons[i], section_title), Style::default().bold()),
+            unread_indicator,
             Span::raw(format!(" {}", arrow)),
         ]);
         items.push(ListItem::new(section_line).style(style));
@@ -68,15 +78,38 @@ pub fn render(f: &mut Frame, app: &App, area: Rect) {
 
             for (item_str, color, is_active_conv) in list {
                 let is_selected = app.sidebar_flat_selected == flat_idx;
-                style = if is_selected && app.focus_area == FocusArea::Sidebar {
-                    Style::default().bg(Color::Blue).fg(Color::White)
-                } else if is_active_conv {
-                    Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)
+                
+                // Add unread count for individual items
+                let unread_count = match i {
+                    0 => app.get_unread_count("#public"), // Public
+                    1 => app.get_unread_count(item_str), // Channels
+                    2 => app.get_unread_count(&format!("dm:{}", item_str)), // People (DMs)
+                    _ => 0,
+                };
+                
+                let unread_indicator = if unread_count > 0 {
+                    Span::styled(format!(" ({})", unread_count), Style::default().fg(Color::Rgb(255, 165, 0)))
                 } else {
-                    Style::default().fg(color)
+                    Span::raw("")
                 };
 
-                items.push(ListItem::new(Line::from(vec![Span::raw("  "), Span::styled(item_str, style)])));
+                // Create the line with proper styling for active conversation
+                let mut spans = vec![Span::raw("  ")];
+                
+                if is_selected && app.focus_area == FocusArea::Sidebar {
+                    // Cursor selection: blue background, white text
+                    spans.push(Span::styled(item_str, Style::default().bg(Color::Blue).fg(Color::White)));
+                } else if is_active_conv {
+                    // Active conversation: green background, white text (only for the item text)
+                    spans.push(Span::styled(item_str, Style::default().bg(Color::Green).fg(Color::White)));
+                } else {
+                    // Normal item: colored text
+                    spans.push(Span::styled(item_str, Style::default().fg(color)));
+                }
+                
+                spans.push(unread_indicator);
+                
+                items.push(ListItem::new(Line::from(spans)));
                 flat_idx += 1;
             }
             
