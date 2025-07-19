@@ -41,10 +41,14 @@ pub fn render(app: &mut App, f: &mut Frame) {
     widgets::sidebar::render(f, app, sidebar_area);
 
     // Render popups if needed (covers everything)
-    match &app.phase {
-        TuiPhase::Connecting | TuiPhase::Error(_) => {
-            widgets::popup::render(f, app, f.size());
+    if app.popup_active {
+        widgets::popup::render(f, app, f.size());
+    } else {
+        match &app.phase {
+            TuiPhase::Connecting | TuiPhase::Error(_) => {
+                widgets::popup::render(f, app, f.size());
+            }
+            TuiPhase::Connected => {}
         }
-        TuiPhase::Connected => {}
     }
 }

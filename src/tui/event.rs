@@ -14,6 +14,18 @@ pub fn handle_key_event(app: &mut App, key_event: KeyEvent, input_tx: &mpsc::Sen
         return;
     }
 
+    // Handle retry connection when in error state
+    if matches!(app.phase, crate::tui::app::TuiPhase::Error(_)) && key_event.code == KeyCode::Char('r') {
+        app.trigger_connection_retry();
+        return;
+    }
+
+    // Handle popup input first
+    if app.popup_active {
+        handle_popup_events(app, key_event, input_tx);
+        return;
+    }
+
     // Handle tab switching
     if key_event.code == KeyCode::Tab {
         app.focus_area = match app.focus_area {
@@ -74,6 +86,11 @@ fn handle_sidebar_events(app: &mut App, key_event: KeyEvent) {
                             }
                         }
                         3 => app.sidebar_state.blocked_selected = Some(child_idx),
+                        4 => { // Settings section
+                            if child_idx == 0 { // Nickname item
+                                app.open_nickname_popup();
+                            }
+                        }
                         _ => {}
                     }
                     if section_idx != 1 { // If not a channel, still update conversation
@@ -112,6 +129,24 @@ fn handle_main_panel_events(app: &mut App, key_event: KeyEvent) {
             }
         }
         _ => {}
+    }
+}
+
+fn handle_popup_events(app: &mut App, key_event: KeyEvent, _input_tx: &mpsc::Sender<String>) {
+    match key_event.code {
+        KeyCode::Enter => {
+            let new_nickname = app.popup_input.value().to_string();
+            if !new_nickname.is_empty() {
+                app.update_nickname(new_nickname);
+                app.close_popup();
+            }
+        }
+        KeyCode::Esc => {
+            app.close_popup();
+        }
+        _ => {
+            app.popup_input.handle_event(&CrosstermEvent::Key(key_event));
+        }
     }
 }
 

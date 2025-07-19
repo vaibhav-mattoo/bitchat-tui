@@ -321,6 +321,67 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
         
+        // 4.6. Handle pending nickname updates
+        if let Some(new_nickname) = app.pending_nickname_update.take() {
+            // Update backend nickname
+            nickname = new_nickname.clone();
+            // Update app state if it exists
+            if let Some(state) = app_state.as_mut() {
+                state.nickname = Some(new_nickname);
+            }
+            // Send system message to confirm nickname change
+            let system_msg = format!("Nickname changed to: {}", nickname);
+            app.add_log_message(format!("system: {}", system_msg));
+        }
+        
+        // 4.7. Handle pending connection retry
+        if app.pending_connection_retry {
+            app.pending_connection_retry = false;
+            
+            // Reset all connection-related state
+            peripheral = None;
+            notification_stream = None;
+            characteristics = None;
+            cmd_char = None;
+            post_connect_initialized = false;
+            my_peer_id = String::new();
+            app_state = None;
+            nickname = String::new();
+            encryption_service = None;
+            key_exchange_payload = None;
+            key_exchange_packet = None;
+            peers = None;
+            bloom = None;
+            fragment_collector = None;
+            delivery_tracker = None;
+            chat_context = None;
+            channel_keys = None;
+            _chat_messages = None;
+            blocked_peers = None;
+            channel_creators = None;
+            password_protected_channels = None;
+            channel_key_commitments = None;
+            discovered_channels = None;
+            favorites = None;
+            identity_key = None;
+            create_app_state = None;
+            
+            // Spawn new Bluetooth connection setup
+            let ui_tx_clone = ui_tx.clone();
+            bt_handle = Some(tokio::spawn(async move {
+                match setup_bluetooth_connection(ui_tx_clone.clone()).await {
+                    Ok(peripheral) => {
+                        let _ = ui_tx_clone.send("__CONNECTED__".to_string()).await;
+                        Ok(peripheral)
+                    },
+                    Err(e) => {
+                        let _ = ui_tx_clone.send(format!("__ERROR__{}", e)).await;
+                        Err(e)
+                    }
+                }
+            }));
+        }
+        
         // 5. Handle input from the input box (from input_rx)
         while let Ok(line) = input_rx.try_recv() {
             let ui_tx = ui_tx.clone();

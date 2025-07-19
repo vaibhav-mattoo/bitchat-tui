@@ -93,10 +93,19 @@ pub struct App {
     pub pending_channel_switch: Option<String>,
     // To signal when backend DM switch is needed
     pub pending_dm_switch: Option<(String, String)>, // (nickname, peer_id)
+    // To signal when backend nickname update is needed
+    pub pending_nickname_update: Option<String>,
+    // To signal when backend should retry connection
+    pub pending_connection_retry: bool,
     
     // Unread message tracking
     pub unread_counts: HashMap<String, usize>, // Channel/DM name -> unread count
     pub last_read_messages: HashMap<String, usize>, // Channel/DM name -> last read message count
+    
+    // Popup state
+    pub popup_active: bool,
+    pub popup_input: Input,
+    pub popup_title: String,
 }
 
 impl App {
@@ -125,8 +134,13 @@ impl App {
             current_conv: Some((None, Some("#public".to_string()))), // Start in public
             pending_channel_switch: None,
             pending_dm_switch: None,
+            pending_nickname_update: None,
+            pending_connection_retry: false,
             unread_counts: HashMap::new(),
             last_read_messages: HashMap::new(),
+            popup_active: false,
+            popup_input: Input::default(),
+            popup_title: String::new(),
         };
         
         app.update_current_conversation();
@@ -370,13 +384,17 @@ impl App {
     }
 
     pub fn transition_to_error(&mut self, error: String) {
-        self.phase = TuiPhase::Error(error);
+        // Strip ANSI escape codes from error messages to prevent display issues
+        let cleaned_error = String::from_utf8(strip_ansi_escapes::strip(&error)).unwrap_or_default();
+        self.phase = TuiPhase::Error(cleaned_error);
     }
 
     pub fn add_popup_message(&mut self, message: String) {
-        let cleaned_message = message.trim().to_string();
-        if !cleaned_message.is_empty() {
-           self.popup_messages.push(cleaned_message);
+        // Strip ANSI escape codes from popup messages to prevent display issues
+        let cleaned_message = String::from_utf8(strip_ansi_escapes::strip(&message)).unwrap_or_default();
+        let trimmed = cleaned_message.trim().to_string();
+        if !trimmed.is_empty() {
+           self.popup_messages.push(trimmed);
         }
     }
 
@@ -509,6 +527,35 @@ impl App {
             }
             _ => 0, // Blocked and Settings don't have unread counts
         }
+    }
+
+    // Popup methods
+    pub fn open_nickname_popup(&mut self) {
+        self.popup_active = true;
+        self.popup_title = "Edit Nickname".to_string();
+        self.popup_input = Input::default();
+        self.focus_area = FocusArea::InputBox; // Focus on popup input
+    }
+
+    pub fn close_popup(&mut self) {
+        self.popup_active = false;
+        self.popup_input = Input::default();
+        self.popup_title = String::new();
+        self.focus_area = FocusArea::Sidebar; // Return focus to sidebar
+    }
+
+    pub fn update_nickname(&mut self, new_nickname: String) {
+        self.nickname = new_nickname.clone();
+        // Signal that backend should update nickname
+        self.pending_nickname_update = Some(new_nickname);
+    }
+
+    pub fn trigger_connection_retry(&mut self) {
+        self.pending_connection_retry = true;
+        // Reset to connecting state
+        self.phase = TuiPhase::Connecting;
+        self.connected = false;
+        self.popup_messages.clear();
     }
 
     pub fn update_sidebar_flat_selection(&mut self) {
