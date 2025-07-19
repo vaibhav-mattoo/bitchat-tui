@@ -16,7 +16,7 @@ pub struct EncryptedPassword {
     pub ciphertext: Vec<u8>, // Encrypted password
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct AppState {
     // Match iOS UserDefaults keys exactly
     pub nickname: Option<String>,                              // bitchat.nickname

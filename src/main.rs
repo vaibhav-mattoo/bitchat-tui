@@ -35,7 +35,7 @@ mod notification_handlers;
 
 use encryption::EncryptionService;
 use terminal_ux::{ChatContext, ChatMode};
-use persistence::{AppState, load_state};
+use persistence::{AppState, load_state, save_state};
 use packet_parser::{parse_bitchat_packet, generate_keys_and_payload};
 use packet_creation::create_bitchat_packet;
 use command_handling::{
@@ -115,9 +115,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Channel for all UI output. All parts of the application will send strings here.
     let (ui_tx, mut ui_rx) = mpsc::channel::<String>(100);
 
-    // Initialize the TUI
+    // Load saved state to get the nickname before initializing TUI
+    let saved_state = load_state();
+    let saved_nickname = saved_state.nickname.clone().unwrap_or_else(|| "my-rust-client".to_string());
+    let saved_nickname_clone = saved_nickname.clone();
+    
+    // Initialize the TUI with the saved nickname
     let mut terminal = tui_mod::init().expect("Failed to initialize TUI");
-    let mut app = App::new();
+    let mut app = App::new_with_nickname(saved_nickname);
 
     // Spawn Bluetooth connection setup in the background
     let ui_tx_clone = ui_tx.clone();
@@ -169,9 +174,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         while let Ok(msg) = ui_rx.try_recv() {
             if msg == "__CONNECTED__" {
                 app.transition_to_connected();
-                if let Some(state) = app_state.as_mut() {
-                    app.nickname = state.nickname.clone().unwrap_or_else(|| "rust-client".to_string());
-                }
                 // Await the bt_handle to get the peripheral
                 if peripheral.is_none() {
                     if let Ok(Ok(periph)) = bt_handle.take().unwrap().await {
@@ -205,8 +207,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let mut peer_id_bytes = [0u8; 4];
                 rand::thread_rng().fill(&mut peer_id_bytes);
                 my_peer_id = hex::encode(&peer_id_bytes);
-                app_state = Some(load_state());
-                nickname = app_state.as_ref().unwrap().nickname.clone().unwrap_or_else(|| "my-rust-client".to_string());
+                app_state = Some(saved_state.clone());
+                nickname = saved_nickname_clone.clone();
                 encryption_service = Some(Arc::new(EncryptionService::new()));
                 let (kxp, _) = generate_keys_and_payload(encryption_service.as_ref().unwrap());
                 key_exchange_payload = Some(kxp.clone());
@@ -327,11 +329,50 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             nickname = new_nickname.clone();
             // Update app state if it exists
             if let Some(state) = app_state.as_mut() {
-                state.nickname = Some(new_nickname);
+                state.nickname = Some(new_nickname.clone());
             }
+            // Update TUI nickname immediately
+            app.nickname = new_nickname.clone();
+            
+            // Announce the new nickname to other peers
+            if let (Some(peripheral), Some(cmd_char)) = (peripheral.as_ref(), cmd_char.as_ref()) {
+                let announce_packet = create_bitchat_packet(&my_peer_id, crate::data_structures::MessageType::Announce, new_nickname.as_bytes().to_vec());
+                if peripheral.write(cmd_char, &announce_packet, btleplug::api::WriteType::WithoutResponse).await.is_err() {
+                    let error_msg = "Failed to announce new nickname";
+                    app.add_log_message(format!("system: {}", error_msg));
+                }
+            }
+            
+            // Save the updated state
+            if let (Some(chat_context), Some(blocked_peers), Some(channel_creators), Some(password_protected_channels), Some(channel_key_commitments), Some(app_state), Some(create_app_state)) = (
+                chat_context.as_ref(), blocked_peers.as_ref(), channel_creators.as_ref(), 
+                password_protected_channels.as_ref(), channel_key_commitments.as_ref(), 
+                app_state.as_ref(), create_app_state.as_ref()
+            ) {
+                let channels_vec: Vec<String> = chat_context.active_channels.iter().cloned().collect();
+                let state_to_save = create_app_state(blocked_peers, channel_creators, &channels_vec, password_protected_channels, channel_key_commitments, &app_state.encrypted_channel_passwords, &new_nickname);
+                if let Err(e) = save_state(&state_to_save) {
+                    let error_msg = format!("Warning: Could not save nickname: {}", e);
+                    app.add_log_message(format!("system: {}", error_msg));
+                }
+            }
+            
             // Send system message to confirm nickname change
-            let system_msg = format!("Nickname changed to: {}", nickname);
+            let system_msg = format!("Nickname changed to: {}", new_nickname);
             app.add_log_message(format!("system: {}", system_msg));
+        }
+        
+        // 4.7. Handle pending conversation clear
+        if app.pending_clear_conversation {
+            app.pending_clear_conversation = false;
+            app.clear_current_conversation();
+            // Send confirmation message
+            let context_msg = match &chat_context.as_ref().unwrap().current_mode {
+                ChatMode::Public => "Cleared public chat".to_string(),
+                ChatMode::Channel(channel) => format!("Cleared channel {}", channel),
+                ChatMode::PrivateDM { nickname, .. } => format!("Cleared DM with {}", nickname),
+            };
+            app.add_log_message(format!("system: {}", context_msg));
         }
         
         // 4.7. Handle pending connection retry
@@ -388,7 +429,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             if handle_number_switching(&line, chat_context.as_mut().unwrap(), ui_tx.clone()).await { continue; }
                 if handle_help_command(&line, ui_tx.clone()).await { continue; }
             if handle_list_command(&line, chat_context.as_mut().unwrap(), ui_tx.clone()).await { continue; }
-            if handle_name_command(&line, &mut nickname, &my_peer_id, peripheral.as_ref().unwrap(), cmd_char.as_ref().unwrap(), blocked_peers.as_ref().unwrap(), channel_creators.as_ref().unwrap(), chat_context.as_mut().unwrap(), password_protected_channels.as_ref().unwrap(), channel_key_commitments.as_ref().unwrap(), app_state.as_ref().unwrap(), create_app_state.as_ref().unwrap().as_ref(), ui_tx.clone()).await { continue; }
+            if handle_name_command(&line, &mut nickname, &my_peer_id, peripheral.as_ref().unwrap(), cmd_char.as_ref().unwrap(), blocked_peers.as_ref().unwrap(), channel_creators.as_ref().unwrap(), chat_context.as_mut().unwrap(), password_protected_channels.as_ref().unwrap(), channel_key_commitments.as_ref().unwrap(), app_state.as_ref().unwrap(), create_app_state.as_ref().unwrap().as_ref(), ui_tx.clone()).await { 
+                // Set the pending nickname update signal to trigger TUI update
+                app.pending_nickname_update = Some(nickname.clone());
+                continue; 
+            }
             if line.starts_with("/j ") {
                 let parts: Vec<&str> = line.split_whitespace().collect();
                 let channel_name = parts.get(1).unwrap_or(&"").to_string();
@@ -424,7 +469,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
             if handle_block_command(&line, blocked_peers.as_mut().unwrap(), peers.as_ref().unwrap(), encryption_service.as_ref().unwrap(), channel_creators.as_ref().unwrap(), chat_context.as_mut().unwrap(), password_protected_channels.as_ref().unwrap(), channel_key_commitments.as_ref().unwrap(), app_state.as_ref().unwrap(), create_app_state.as_ref().unwrap().as_ref(), &nickname, ui_tx.clone()).await { continue; }
             if handle_unblock_command(&line, blocked_peers.as_mut().unwrap(), peers.as_ref().unwrap(), encryption_service.as_ref().unwrap(), channel_creators.as_ref().unwrap(), chat_context.as_mut().unwrap(), password_protected_channels.as_ref().unwrap(), channel_key_commitments.as_ref().unwrap(), app_state.as_ref().unwrap(), create_app_state.as_ref().unwrap().as_ref(), &nickname, ui_tx.clone()).await { continue; }
-            if handle_clear_command(&line, chat_context.as_mut().unwrap(), ui_tx.clone()).await { continue; }
+            if handle_clear_command(&line, chat_context.as_mut().unwrap(), ui_tx.clone()).await { 
+                app.pending_clear_conversation = true;
+                continue; 
+            }
             if handle_status_command(&line, peers.as_ref().unwrap(), chat_context.as_ref().unwrap(), &nickname, &my_peer_id, ui_tx.clone()).await { continue; }
             if handle_leave_command(&line, chat_context.as_mut().unwrap(), channel_keys.as_mut().unwrap(), app_state.as_mut().unwrap(), &my_peer_id, peripheral.as_ref().unwrap(), cmd_char.as_ref().unwrap(), ui_tx.clone()).await { continue; }
             if handle_pass_command(&line, chat_context.as_ref().unwrap(), channel_creators.as_mut().unwrap(), channel_keys.as_mut().unwrap(), password_protected_channels.as_mut().unwrap(), app_state.as_mut().unwrap(), &my_peer_id, peripheral.as_ref().unwrap(), cmd_char.as_ref().unwrap(), ui_tx.clone()).await { continue; }

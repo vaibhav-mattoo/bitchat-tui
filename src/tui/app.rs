@@ -97,6 +97,8 @@ pub struct App {
     pub pending_nickname_update: Option<String>,
     // To signal when backend should retry connection
     pub pending_connection_retry: bool,
+    // To signal when conversation should be cleared
+    pub pending_clear_conversation: bool,
     
     // Unread message tracking
     pub unread_counts: HashMap<String, usize>, // Channel/DM name -> unread count
@@ -110,6 +112,10 @@ pub struct App {
 
 impl App {
     pub fn new() -> Self {
+        Self::new_with_nickname("my-rust-client".to_string())
+    }
+
+    pub fn new_with_nickname(nickname: String) -> Self {
         let channels = Vec::new(); // Start with no channels, only public
         let mut channel_messages = HashMap::new();
         channel_messages.insert("#public".to_string(), Vec::new()); // Still need to store public messages
@@ -121,7 +127,7 @@ impl App {
             focus_area: FocusArea::InputBox,
             sidebar_flat_selected: 0,
             msg_scroll: 0,
-            nickname: "my-rust-client".to_string(),
+            nickname,
             network_name: "BitChat Mesh".to_string(),
             connected: false,
             channels,
@@ -136,6 +142,7 @@ impl App {
             pending_dm_switch: None,
             pending_nickname_update: None,
             pending_connection_retry: false,
+            pending_clear_conversation: false,
             unread_counts: HashMap::new(),
             last_read_messages: HashMap::new(),
             popup_active: false,
@@ -303,14 +310,24 @@ impl App {
         // Handle system messages (format: "system: message")
         if let Some(captures) = Regex::new(r"^system: (.+)$").unwrap().captures(trimmed) {
             let content = captures.get(1).unwrap().as_str().to_string();
-            let msg = Message {
-                sender: "system".to_string(),
-                timestamp: chrono::Local::now().format("%H:%M").to_string(),
-                content,
-                is_self: false,
-            };
+            
+            // Split multi-line content into separate system messages
+            let lines: Vec<&str> = content.split('\n').collect();
             let current_channel = self.get_selected_channel_name();
-            self.channel_messages.entry(current_channel).or_default().push(msg);
+            
+            for line in lines {
+                let trimmed_line = line.trim();
+                if !trimmed_line.is_empty() {
+                    let msg = Message {
+                        sender: "system".to_string(),
+                        timestamp: chrono::Local::now().format("%H:%M").to_string(),
+                        content: trimmed_line.to_string(),
+                        is_self: false,
+                    };
+                    self.channel_messages.entry(current_channel.clone()).or_default().push(msg);
+                }
+            }
+            
             self.scroll_to_bottom_current_conversation();
             return;
         }
@@ -320,14 +337,23 @@ impl App {
             return;
         }
         
-        let msg = Message {
-            sender: "system".to_string(),
-            timestamp: chrono::Local::now().format("%H:%M").to_string(),
-            content: trimmed.to_string(),
-            is_self: false,
-        };
+        // Handle multi-line content by splitting into separate system messages
+        let lines: Vec<&str> = trimmed.split('\n').collect();
         let current_channel = self.get_selected_channel_name();
-        self.channel_messages.entry(current_channel).or_default().push(msg);
+        
+        for line in lines {
+            let trimmed_line = line.trim();
+            if !trimmed_line.is_empty() {
+                let msg = Message {
+                    sender: "system".to_string(),
+                    timestamp: chrono::Local::now().format("%H:%M").to_string(),
+                    content: trimmed_line.to_string(),
+                    is_self: false,
+                };
+                self.channel_messages.entry(current_channel.clone()).or_default().push(msg);
+            }
+        }
+        
         self.scroll_to_bottom_current_conversation();
     }
     
@@ -556,6 +582,14 @@ impl App {
         self.phase = TuiPhase::Connecting;
         self.connected = false;
         self.popup_messages.clear();
+    }
+
+    pub fn clear_current_conversation(&mut self) {
+        let current_channel = self.get_selected_channel_name();
+        if let Some(messages) = self.channel_messages.get_mut(&current_channel) {
+            messages.clear();
+        }
+        self.msg_scroll = 0;
     }
 
     pub fn update_sidebar_flat_selection(&mut self) {

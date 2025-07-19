@@ -47,7 +47,13 @@ pub fn render(f: &mut Frame, app: &mut App, area: Rect) {
 
     // Render Messages
     let msg_items: Vec<ListItem> = messages.iter().map(|msg| {
-        let color = if msg.is_self { Color::Cyan } else { Color::White };
+        let color = if msg.sender == "system" { 
+            Color::White 
+        } else if msg.is_self { 
+            Color::Cyan 
+        } else { 
+            Color::LightGreen 
+        };
         let line = Line::from(vec![
             Span::styled(format!("[{}]", msg.timestamp), Style::default().fg(Color::DarkGray)),
             Span::raw(" "),

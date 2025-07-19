@@ -5,7 +5,7 @@ use btleplug::api::{WriteType, Peripheral as _};
 use btleplug::platform::Peripheral;
 use tokio::sync::mpsc;
 use sha2::{Sha256, Digest};
-use crate::data_structures::{MessageType, Peer, DeliveryTracker, VERSION, DebugLevel, DEBUG_LEVEL};
+use crate::data_structures::{MessageType, Peer, DeliveryTracker, DebugLevel, DEBUG_LEVEL};
 use crate::terminal_ux::{ChatContext, ChatMode,get_help_text};
 use crate::persistence::{AppState, save_state, encrypt_password, EncryptedPassword};
 use crate::encryption::EncryptionService;
@@ -42,9 +42,9 @@ pub async fn handle_help_command(line: &str, ui_tx: mpsc::Sender<String>) -> boo
 pub async fn handle_name_command(
     line: &str,
     nickname: &mut String,
-    my_peer_id: &str,
-    peripheral: &Peripheral,
-    cmd_char: &btleplug::api::Characteristic,
+    _my_peer_id: &str,
+    _peripheral: &Peripheral,
+    _cmd_char: &btleplug::api::Characteristic,
     blocked_peers: &HashSet<String>,
     channel_creators: &HashMap<String, String>,
     chat_context: &ChatContext,
@@ -66,16 +66,11 @@ pub async fn handle_name_command(
             let _ = ui_tx.send("\x1b[93m⚠ Reserved nickname\x1b[0m\n\x1b[90mThis nickname is reserved and cannot be used.\x1b[0m\n".to_string()).await;
         } else {
             *nickname = new_name.to_string();
-            let announce_packet = create_bitchat_packet(my_peer_id, MessageType::Announce, nickname.as_bytes().to_vec());
-            if peripheral.write(cmd_char, &announce_packet, WriteType::WithoutResponse).await.is_err() {
-                let _ = ui_tx.send("[!] Failed to announce new nickname\n".to_string()).await;
-            } else {
-                let _ = ui_tx.send(format!("\x1b[90m» Nickname changed to: {}\x1b[0m\n", nickname)).await;
-                let channels_vec: Vec<String> = chat_context.active_channels.iter().cloned().collect();
-                let state_to_save = create_app_state(blocked_peers, channel_creators, &channels_vec, password_protected_channels, channel_key_commitments, &app_state.encrypted_channel_passwords, nickname);
-                if let Err(e) = save_state(&state_to_save) {
-                    let _ = ui_tx.send(format!("Warning: Could not save nickname: {}\n", e)).await;
-                }
+            // Don't send announcement or message here - let the main loop handle everything via the pending_nickname_update signal
+            let channels_vec: Vec<String> = chat_context.active_channels.iter().cloned().collect();
+            let state_to_save = create_app_state(blocked_peers, channel_creators, &channels_vec, password_protected_channels, channel_key_commitments, &app_state.encrypted_channel_passwords, nickname);
+            if let Err(e) = save_state(&state_to_save) {
+                let _ = ui_tx.send(format!("Warning: Could not save nickname: {}\n", e)).await;
             }
         }
         return true;
@@ -470,28 +465,9 @@ pub async fn handle_unblock_command(
     false
 }
 
-pub async fn handle_clear_command(line: &str, chat_context: &ChatContext, ui_tx: mpsc::Sender<String>) -> bool {
+pub async fn handle_clear_command(line: &str, _chat_context: &ChatContext, _ui_tx: mpsc::Sender<String>) -> bool {
     if line == "/clear" {
-        let mut output = "\x1b[2J\x1b[1;1H".to_string(); // Clear screen
-        output.push_str("\n\x1b[38;5;46m##\\       ##\\   ##\\               ##\\                  ##\\\n");
-        output.push_str("## |      \\__|  ## |              ## |                 ## |\n");
-        output.push_str("#######\\  ##\\ ######\\    #######\\ #######\\   ######\\ ######\\\n");
-        output.push_str("##  __##\\ ## |\\_##  _|  ##  _____|##  __##\\  \\____##\\\\_##  _|\n");
-        output.push_str("## |  ## |## |  ## |    ## /      ## |  ## | ####### | ## |\n");
-        output.push_str("## |  ## |## |  ## |##\\ ## |      ## |  ## |##  __## | ## |##\\\n");
-        output.push_str("#######  |## |  \\####  |\\#######\\ ## |  ## |\\####### | \\####  |\n");
-        output.push_str("\\_______/ \\__|   \\____/  \\_______|\\__|  \\__| \\_______|  \\____/\x1b[0m\n");
-        output.push_str(&format!("\n\x1b[38;5;40m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\x1b[0m\n"));
-        output.push_str(&format!("\x1b[37m                bitch@ the terminal {}\x1b[0m\n", VERSION));
-        output.push_str(&format!("\x1b[38;5;40m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\x1b[0m\n\n"));
-        
-        let context_msg = match &chat_context.current_mode {
-            ChatMode::Public => "» Cleared public chat\n".to_string(),
-            ChatMode::Channel(channel) => format!("» Cleared channel {}\n", channel),
-            ChatMode::PrivateDM { nickname, .. } => format!("» Cleared DM with {}\n", nickname),
-        };
-        output.push_str(&context_msg);
-        let _ = ui_tx.send(output).await;
+        // Don't send any output here - let the main loop handle it via the pending_clear_conversation signal
         return true;
     }
     false
