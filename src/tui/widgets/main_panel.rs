@@ -28,9 +28,17 @@ pub fn render(f: &mut Frame, app: &mut App, area: Rect) {
     let header_text = if let Some(user) = dm_target {
         format!("Direct Message with {}", user)
     } else if let Some(channel) = channel_name {
-        format!("Channel: {}", channel)
+        if channel == "#public" {
+            "Public Chat".to_string()
+        } else {
+            format!("Channel: {}", channel)
+        }
     } else {
-        "No active conversation".to_string()
+        if app.get_selected_channel_name() == "#public" {
+            "Public Chat".to_string()
+        } else {
+            format!("Channel: {}", app.get_selected_channel_name())
+        }
     };
     let header = Paragraph::new(header_text)
         .block(Block::default().borders(Borders::ALL).title("Conversation"))

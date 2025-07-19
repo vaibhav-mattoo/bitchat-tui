@@ -13,14 +13,15 @@ use crate::tui::app::{App, FocusArea};
 // Helper to calculate what items are visible for navigation
 pub fn sidebar_visible_items(app: &App) -> Vec<(usize, Option<usize>)> {
     let mut items = Vec::new();
-    for section in 0..4 {
+    for section in 0..5 { // Now 5 sections: Public, Channels, People, Blocked, Settings
         items.push((section, None)); // Section header
         if app.sidebar_state.expanded[section] {
             let count = match section {
-                0 => app.channels.len(),
-                1 => app.people.len(),
-                2 => app.blocked.len(),
-                3 => 2, // Settings: Nickname, Network
+                0 => 1, // Public: always 1 item
+                1 => app.channels.len(),
+                2 => app.people.len(),
+                3 => app.blocked.len(),
+                4 => 2, // Settings: Nickname, Network
                 _ => 0,
             };
             for idx in 0..count {
@@ -34,8 +35,8 @@ pub fn sidebar_visible_items(app: &App) -> Vec<(usize, Option<usize>)> {
 
 pub fn render(f: &mut Frame, app: &App, area: Rect) {
     let mut items: Vec<ListItem> = Vec::new();
-    let section_titles = ["Channels", "People", "Blocked", "Settings"];
-    let icons = ["#", "@", "🚫", "⚙"];
+    let section_titles = ["Public", "Channels", "People", "Blocked", "Settings"];
+    let icons = ["🌐", "#", "@", "🚫", "⚙"];
     
     let _visible_items = sidebar_visible_items(app);
     let mut flat_idx = 0;
@@ -57,10 +58,11 @@ pub fn render(f: &mut Frame, app: &App, area: Rect) {
         flat_idx += 1;
 
         if app.sidebar_state.expanded[i] {
-            let list: Vec<(&String, Color, bool)> = match i {
-                0 => app.channels.iter().map(|s| (s, Color::Cyan, app.sidebar_state.channel_selected == Some(items.len() - (i + 1)))).collect(),
-                1 => app.people.iter().map(|s| (s, Color::Green, app.sidebar_state.people_selected == Some(items.len() - (i + 1)))).collect(),
-                2 => app.blocked.iter().map(|s| (s, Color::Red, false)).collect(),
+            let list: Vec<(&str, Color, bool)> = match i {
+                0 => vec![(&"Public Chat", Color::Yellow, app.sidebar_state.public_selected.unwrap_or(false))], // Public section
+                1 => app.channels.iter().enumerate().map(|(idx, s)| (s.as_str(), Color::Cyan, app.sidebar_state.channel_selected == Some(idx))).collect(),
+                2 => app.people.iter().enumerate().map(|(idx, s)| (s.as_str(), Color::Green, app.sidebar_state.people_selected == Some(idx))).collect(),
+                3 => app.blocked.iter().map(|s| (s.as_str(), Color::Red, false)).collect(),
                 _ => vec![],
             };
 
@@ -68,19 +70,17 @@ pub fn render(f: &mut Frame, app: &App, area: Rect) {
                 let is_selected = app.sidebar_flat_selected == flat_idx;
                 style = if is_selected && app.focus_area == FocusArea::Sidebar {
                     Style::default().bg(Color::Blue).fg(Color::White)
+                } else if is_active_conv {
+                    Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)
                 } else {
                     Style::default().fg(color)
                 };
-
-                if is_active_conv {
-                    style = style.add_modifier(Modifier::REVERSED);
-                }
 
                 items.push(ListItem::new(Line::from(vec![Span::raw("  "), Span::styled(item_str, style)])));
                 flat_idx += 1;
             }
             
-            if i == 3 { // Settings
+            if i == 4 { // Settings
                  // Nickname
                 let is_selected = app.sidebar_flat_selected == flat_idx;
                 style = if is_selected && app.focus_area == FocusArea::Sidebar { Style::default().bg(Color::Blue).fg(Color::White) } else { Style::default() };

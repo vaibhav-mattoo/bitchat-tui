@@ -236,16 +236,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let favs = favorites.clone();
                 let id_key = identity_key.clone();
                 create_app_state = Some(Box::new(move |blocked, creators, channels, protected, commitments, encrypted_passwords, current_nickname| {
-                    AppState {
-                        nickname: Some(current_nickname.to_string()),
-                        blocked_peers: blocked.clone(),
-                        channel_creators: creators.clone(),
-                        joined_channels: channels.clone(),
-                        password_protected_channels: protected.clone(),
-                        channel_key_commitments: commitments.clone(),
+        AppState {
+            nickname: Some(current_nickname.to_string()),
+            blocked_peers: blocked.clone(),
+            channel_creators: creators.clone(),
+            joined_channels: channels.clone(),
+            password_protected_channels: protected.clone(),
+            channel_key_commitments: commitments.clone(),
                         favorites: favs.clone().unwrap_or_default(),
                         identity_key: id_key.clone(),
-                        encrypted_channel_passwords: encrypted_passwords.clone(),
+            encrypted_channel_passwords: encrypted_passwords.clone(),
                     }
                 }));
                 post_connect_initialized = true;
@@ -266,7 +266,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             MessageType::FragmentStart | MessageType::FragmentContinue | MessageType::FragmentEnd => handle_fragment_packet(&packet, &notification.value, fragment_collector.as_mut().unwrap(), &mut peers_lock, bloom.as_mut().unwrap(), discovered_channels.as_mut().unwrap(), password_protected_channels.as_mut().unwrap(), chat_context.as_mut().unwrap(), encryption_service.as_ref().unwrap(), peripheral.as_ref().unwrap(), cmd_char.as_ref().unwrap(), &nickname, &my_peer_id, blocked_peers.as_ref().unwrap(), ui_tx.clone()).await,
                             MessageType::KeyExchange => handle_key_exchange_message(&packet, &mut peers_lock, encryption_service.as_ref().unwrap(), peripheral.as_ref().unwrap(), cmd_char.as_ref().unwrap(), &my_peer_id, ui_tx.clone()).await,
                             MessageType::Leave => handle_leave_message(&packet, &mut peers_lock, chat_context.as_ref().unwrap(), ui_tx.clone()).await,
-                            MessageType::ChannelAnnounce => handle_channel_announce_message(&packet, channel_creators.as_mut().unwrap(), password_protected_channels.as_mut().unwrap(), channel_keys.as_mut().unwrap(), channel_key_commitments.as_mut().unwrap(), chat_context.as_mut().unwrap(), blocked_peers.as_ref().unwrap(), &app_state.as_ref().unwrap().encrypted_channel_passwords, &nickname, create_app_state.as_ref().unwrap().as_ref(), ui_tx.clone()).await,
+                            MessageType::ChannelAnnounce => {
+                                // Get the channel name from the packet payload
+                                let payload_str = String::from_utf8_lossy(&packet.payload);
+                                let parts: Vec<&str> = payload_str.split('|').collect();
+                                if parts.len() >= 3 {
+                                    let channel_name = parts[0].to_string();
+                                    // Don't add #public as a regular channel
+                                    if channel_name != "#public" && !app.channels.contains(&channel_name) {
+                                        app.channels.push(channel_name.clone());
+                                    }
+                                }
+                                handle_channel_announce_message(&packet, channel_creators.as_mut().unwrap(), password_protected_channels.as_mut().unwrap(), channel_keys.as_mut().unwrap(), channel_key_commitments.as_mut().unwrap(), chat_context.as_mut().unwrap(), blocked_peers.as_ref().unwrap(), &app_state.as_ref().unwrap().encrypted_channel_passwords, &nickname, create_app_state.as_ref().unwrap().as_ref(), ui_tx.clone()).await
+                            },
                             MessageType::DeliveryAck => handle_delivery_ack_message(&packet, &notification.value, encryption_service.as_ref().unwrap(), delivery_tracker.as_mut().unwrap(), peripheral.as_ref().unwrap(), cmd_char.as_ref().unwrap(), &my_peer_id, ui_tx.clone()).await,
                             MessageType::DeliveryStatusRequest => handle_delivery_status_request_message(&packet, ui_tx.clone()).await,
                             MessageType::ReadReceipt => handle_read_receipt_message(&packet, ui_tx.clone()).await,
@@ -284,20 +296,71 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 event::handle_key_event(&mut app, key_event, &input_tx);
             }
         }
-        // 4. Handle input from the input box (from input_rx)
+        // 4. Handle pending channel switches
+        if let Some(channel_name) = app.pending_channel_switch.take() {
+            // Update backend chat_context to switch to the selected channel
+            if channel_name == "#public" {
+                chat_context.as_mut().unwrap().switch_to_public();
+            } else {
+                chat_context.as_mut().unwrap().switch_to_channel(&channel_name);
+            }
+        }
+        
+        // 4.5. Handle pending DM switches
+        if let Some((target_nickname, _)) = app.pending_dm_switch.take() {
+            // Find the peer ID for the nickname and switch to DM mode
+            let peer_id = {
+                let peers = peers.as_ref().unwrap().lock().await;
+                peers.iter()
+                    .find(|(_, peer)| peer.nickname.as_deref() == Some(&target_nickname))
+                    .map(|(id, _)| id.clone())
+            };
+            
+            if let Some(target_peer_id) = peer_id {
+                chat_context.as_mut().unwrap().enter_dm_mode(&target_nickname, &target_peer_id);
+            }
+        }
+        
+        // 5. Handle input from the input box (from input_rx)
         while let Ok(line) = input_rx.try_recv() {
             let ui_tx = ui_tx.clone();
             if handle_number_switching(&line, chat_context.as_mut().unwrap(), ui_tx.clone()).await { continue; }
-            if handle_help_command(&line, ui_tx.clone()).await { continue; }
+                if handle_help_command(&line, ui_tx.clone()).await { continue; }
             if handle_list_command(&line, chat_context.as_mut().unwrap(), ui_tx.clone()).await { continue; }
             if handle_name_command(&line, &mut nickname, &my_peer_id, peripheral.as_ref().unwrap(), cmd_char.as_ref().unwrap(), blocked_peers.as_ref().unwrap(), channel_creators.as_ref().unwrap(), chat_context.as_mut().unwrap(), password_protected_channels.as_ref().unwrap(), channel_key_commitments.as_ref().unwrap(), app_state.as_ref().unwrap(), create_app_state.as_ref().unwrap().as_ref(), ui_tx.clone()).await { continue; }
-            if handle_join_command(&line, password_protected_channels.as_ref().unwrap(), channel_keys.as_mut().unwrap(), discovered_channels.as_mut().unwrap(), chat_context.as_mut().unwrap(), channel_key_commitments.as_mut().unwrap(), app_state.as_mut().unwrap(), create_app_state.as_ref().unwrap().as_ref(), &nickname, peripheral.as_ref().unwrap(), cmd_char.as_ref().unwrap(), channel_creators.as_ref().unwrap(), blocked_peers.as_ref().unwrap(), ui_tx.clone()).await { continue; }
+            if line.starts_with("/j ") {
+                let parts: Vec<&str> = line.split_whitespace().collect();
+                let channel_name = parts.get(1).unwrap_or(&"").to_string();
+                
+                if !channel_name.is_empty() && channel_name.starts_with('#') {
+                    // Update TUI state
+                    app.join_channel(channel_name.clone());
+                    
+                    // Send system message to TUI
+                    let system_msg = format!("Joined channel {}", channel_name);
+                    app.add_log_message(format!("system: {}", system_msg));
+                    
+                    // Handle backend join logic
+                    if handle_join_command(&line, password_protected_channels.as_ref().unwrap(), channel_keys.as_mut().unwrap(), discovered_channels.as_mut().unwrap(), chat_context.as_mut().unwrap(), channel_key_commitments.as_mut().unwrap(), app_state.as_mut().unwrap(), create_app_state.as_ref().unwrap().as_ref(), &nickname, peripheral.as_ref().unwrap(), cmd_char.as_ref().unwrap(), channel_creators.as_ref().unwrap(), blocked_peers.as_ref().unwrap(), ui_tx.clone()).await { 
+                    continue;
+                }
+                } else {
+                    let _ = ui_tx.send("\x1b[93m⚠ Usage: /j #<channel> [password]\x1b[0m\n".to_string()).await;
+                    continue;
+                }
+            }
             if handle_exit_command(&line, blocked_peers.as_ref().unwrap(), channel_creators.as_ref().unwrap(), chat_context.as_ref().unwrap(), password_protected_channels.as_ref().unwrap(), channel_key_commitments.as_ref().unwrap(), app_state.as_ref().unwrap(), create_app_state.as_ref().unwrap().as_ref(), &nickname, ui_tx.clone()).await { break; }
             if handle_reply_command(&line, chat_context.as_mut().unwrap(), ui_tx.clone()).await { continue; }
             if handle_public_command(&line, chat_context.as_mut().unwrap(), ui_tx.clone()).await { continue; }
             if handle_online_command(&line, peers.as_ref().unwrap(), ui_tx.clone()).await { continue; }
             if handle_channels_command(&line, chat_context.as_ref().unwrap(), channel_keys.as_ref().unwrap(), password_protected_channels.as_ref().unwrap(), ui_tx.clone()).await { continue; }
-            if handle_dm_command(&line, chat_context.as_mut().unwrap(), peers.as_ref().unwrap(), &nickname, &my_peer_id, delivery_tracker.as_mut().unwrap(), encryption_service.as_ref().unwrap(), peripheral.as_ref().unwrap(), cmd_char.as_ref().unwrap(), ui_tx.clone()).await { continue; }
+            if handle_dm_command(&line, chat_context.as_mut().unwrap(), peers.as_ref().unwrap(), &nickname, &my_peer_id, delivery_tracker.as_mut().unwrap(), encryption_service.as_ref().unwrap(), peripheral.as_ref().unwrap(), cmd_char.as_ref().unwrap(), ui_tx.clone(), &mut app).await { 
+                // Update TUI to reflect DM mode if we entered DM mode
+                if let ChatMode::PrivateDM { nickname: target_nickname, .. } = &chat_context.as_ref().unwrap().current_mode {
+                    app.switch_to_dm(target_nickname.clone());
+                }
+                continue; 
+            }
             if handle_block_command(&line, blocked_peers.as_mut().unwrap(), peers.as_ref().unwrap(), encryption_service.as_ref().unwrap(), channel_creators.as_ref().unwrap(), chat_context.as_mut().unwrap(), password_protected_channels.as_ref().unwrap(), channel_key_commitments.as_ref().unwrap(), app_state.as_ref().unwrap(), create_app_state.as_ref().unwrap().as_ref(), &nickname, ui_tx.clone()).await { continue; }
             if handle_unblock_command(&line, blocked_peers.as_mut().unwrap(), peers.as_ref().unwrap(), encryption_service.as_ref().unwrap(), channel_creators.as_ref().unwrap(), chat_context.as_mut().unwrap(), password_protected_channels.as_ref().unwrap(), channel_key_commitments.as_ref().unwrap(), app_state.as_ref().unwrap(), create_app_state.as_ref().unwrap().as_ref(), &nickname, ui_tx.clone()).await { continue; }
             if handle_clear_command(&line, chat_context.as_mut().unwrap(), ui_tx.clone()).await { continue; }
@@ -316,9 +379,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
             handle_regular_message(&line, &nickname, &my_peer_id, chat_context.as_ref().unwrap(), password_protected_channels.as_ref().unwrap(), channel_keys.as_mut().unwrap(), encryption_service.as_ref().unwrap(), delivery_tracker.as_mut().unwrap(), peripheral.as_ref().unwrap(), cmd_char.as_ref().unwrap(), ui_tx.clone()).await;
         }
-        // 5. Render the UI
+        // 6. Render the UI
         terminal.draw(|f| ui::render(&mut app, f)).unwrap();
-        // 6. Exit if requested
+        // 7. Exit if requested
         if app.should_quit {
             break 'mainloop;
         }

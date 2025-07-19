@@ -57,11 +57,27 @@ fn handle_sidebar_events(app: &mut App, key_event: KeyEvent) {
                     // It's an item (channel, person, etc.)
                     app.sidebar_state.people_selected = None;
                     app.sidebar_state.channel_selected = None;
+                    app.sidebar_state.public_selected = None;
                     match section_idx {
-                        0 => app.sidebar_state.channel_selected = Some(child_idx),
-                        1 => app.sidebar_state.people_selected = Some(child_idx),
-                        2 => app.sidebar_state.blocked_selected = Some(child_idx),
+                        0 => { // Public section
+                            app.sidebar_state.public_selected = Some(true);
+                            app.switch_to_public();
+                        }
+                        1 => { // Channels section
+                            if let Some(channel_name) = app.channels.get(child_idx) {
+                                app.switch_to_channel(channel_name.clone());
+                            }
+                        }
+                        2 => { // People section
+                            if let Some(person_name) = app.people.get(child_idx) {
+                                app.switch_to_dm(person_name.clone());
+                            }
+                        }
+                        3 => app.sidebar_state.blocked_selected = Some(child_idx),
                         _ => {}
+                    }
+                    if section_idx != 1 { // If not a channel, still update conversation
+                        app.update_current_conversation();
                     }
                 } else {
                     // It's a section header, so toggle it
@@ -105,7 +121,10 @@ fn handle_input_events(app: &mut App, key_event: KeyEvent, input_tx: &mpsc::Send
             let input_str = app.input.value().to_string();
             if !input_str.is_empty() {
                 if input_tx.try_send(input_str.clone()).is_ok() {
-                    app.add_sent_message(input_str);
+                    // Only add to TUI if it's not a command (doesn't start with /)
+                    if !input_str.starts_with('/') {
+                        app.add_sent_message(input_str);
+                    }
                     app.input.reset();
                 }
             }

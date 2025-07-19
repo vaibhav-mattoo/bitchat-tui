@@ -271,48 +271,123 @@ pub async fn handle_dm_command(
     peripheral: &Peripheral,
     cmd_char: &btleplug::api::Characteristic,
     ui_tx: mpsc::Sender<String>,
+    app: &mut crate::tui::app::App,
 ) -> bool {
     if line.starts_with("/dm ") {
         let parts: Vec<&str> = line.splitn(3, ' ').collect();
+        
+        // Check if it's just "/dm nickname" (enter DM mode) or "/dm nickname message" (quick send)
         if parts.len() < 2 {
-            let _ = ui_tx.send("\x1b[93m⚠ Usage: /dm <nickname> [message]\x1b[0m\n\x1b[90mExample: /dm Bob Hey there!\x1b[0m\n".to_string()).await;
+            let _ = ui_tx.send("\x1b[93m⚠ Usage: /dm <nickname> [message]\x1b[0m\n".to_string()).await;
+            let _ = ui_tx.send("\x1b[90mExample: /dm Bob Hey there!\x1b[0m\n".to_string()).await;
             return true;
         }
+        
         let target_nickname = parts[1];
+        
+        // Find peer ID for nickname
         let peer_id = {
             peers.lock().await.iter()
                 .find(|(_, peer)| peer.nickname.as_deref() == Some(target_nickname))
                 .map(|(id, _)| id.clone())
         };
-
+        
         if let Some(target_peer_id) = peer_id {
+            // If no message provided, enter DM mode
             if parts.len() == 2 {
                 chat_context.enter_dm_mode(target_nickname, &target_peer_id);
                 if unsafe { DEBUG_LEVEL >= DebugLevel::Basic } {
                     let _ = ui_tx.send(format!("{}\n", chat_context.get_status_line())).await;
                 }
-            } else {
-                let private_message = parts[2];
-                let (message_payload, message_id) = create_bitchat_message_payload_full(nickname, private_message, None, true, my_peer_id);
-                delivery_tracker.track_message(message_id.clone(), private_message.to_string(), true);
-                let padded_payload = message_payload; // simplified for brevity, padding logic is in handle_private_dm
-                match encryption_service.encrypt(&padded_payload, &target_peer_id) {
-                    Ok(encrypted) => {
-                        let signature = encryption_service.sign(&encrypted);
-                        let packet = create_bitchat_packet_with_recipient_and_signature(my_peer_id, &target_peer_id, MessageType::Message, encrypted, Some(signature));
-                        if send_packet_with_fragmentation(peripheral, cmd_char, packet, my_peer_id).await.is_err() {
-                            let _ = ui_tx.send("\n\x1b[91m❌ Failed to send private message\x1b[0m\n".to_string()).await;
-                        }
-                    },
-                    Err(e) => {
-                        let _ = ui_tx.send(format!("[!] Failed to encrypt private message: {:?}\n", e)).await;
-                    }
+                return true;
+            }
+            
+            // Otherwise send the message directly
+            let private_message = parts[2];
+            // Create private message
+            if unsafe { DEBUG_LEVEL >= DebugLevel::Basic } {
+                let _ = ui_tx.send(format!("[PRIVATE] Sending encrypted message to {}\n", target_nickname)).await;
+            }
+            
+            // Create message payload with private flag
+            let (message_payload, message_id) = create_bitchat_message_payload_full(nickname, private_message, None, true, my_peer_id);
+            
+            // Track private message for delivery confirmation
+            delivery_tracker.track_message(message_id.clone(), private_message.to_string(), true);
+            
+            // Pad the message for privacy using PKCS#7
+            let block_sizes = [256, 512, 1024, 2048];
+            let payload_size = message_payload.len();
+            let target_size = block_sizes.iter()
+                .find(|&&size| payload_size + 16 <= size)
+                .copied()
+                .unwrap_or(payload_size);
+            
+            let padding_needed = target_size - message_payload.len();
+            let mut padded_payload = message_payload.clone();
+            
+            if padding_needed > 0 && padding_needed <= 255 {
+                // PKCS#7 padding: all padding bytes have the same value (the padding length)
+                for _ in 0..padding_needed {
+                    padded_payload.push(padding_needed as u8);
+                }
+                if unsafe { DEBUG_LEVEL >= DebugLevel::Basic } {
+                    let _ = ui_tx.send(format!("[PRIVATE] Added {} bytes of PKCS#7 padding\n", padding_needed)).await;
+                }
+            } else if padding_needed == 0 {
+                // If already at block size, don't add more padding - Android doesn't do this
+                if unsafe { DEBUG_LEVEL >= DebugLevel::Basic } {
+                    let _ = ui_tx.send("[PRIVATE] Message already at block size, no padding needed\n".to_string()).await;
                 }
             }
+            
+            // Encrypt the padded payload for the recipient
+            match encryption_service.encrypt(&padded_payload, &target_peer_id) {
+                Ok(encrypted) => {
+                    if unsafe { DEBUG_LEVEL >= DebugLevel::Basic } {
+                        let _ = ui_tx.send(format!("[PRIVATE] Encrypted payload: {} bytes\n", encrypted.len())).await;
+                    }
+                    
+                    // Sign the encrypted payload
+                    let signature = encryption_service.sign(&encrypted);
+                    
+                    // Create packet with recipient ID for private routing
+                    let packet = create_bitchat_packet_with_recipient_and_signature(
+                        my_peer_id,
+                        &target_peer_id,  // Specify the recipient
+                        MessageType::Message,
+                        encrypted,
+                        Some(signature)
+                    );
+                    
+                    // Send the private message
+                    if let Err(_e) = send_packet_with_fragmentation(peripheral, cmd_char, packet, my_peer_id).await {
+                        let _ = ui_tx.send("\n\x1b[91m❌ Failed to send private message\x1b[0m\n".to_string()).await;
+                        let _ = ui_tx.send("\x1b[90mThe message could not be delivered. Connection may have been lost.\x1b[0m\n".to_string()).await;
+                    } else {
+                        // Add the message to the TUI's DM conversation
+                        app.add_dm_message(target_nickname.to_string(), private_message.to_string());
+                        
+                        // Add a system message to the current conversation to confirm the DM was sent
+                        let system_msg = format!("<you->{}> {}", target_nickname, private_message);
+                        app.add_log_message(format!("system: {}", system_msg));
+                        
+                        if unsafe { DEBUG_LEVEL >= DebugLevel::Basic } {
+                            let _ = ui_tx.send(format!("[PRIVATE] Message sent to {}\n", target_nickname)).await;
+                        }
+                    }
+                },
+                Err(e) => {
+                    let _ = ui_tx.send(format!("[!] Failed to encrypt private message: {:?}\n", e)).await;
+                    let _ = ui_tx.send(format!("[!] Make sure you have received key exchange from {}\n", target_nickname)).await;
+                }
+            }
+            return true;
         } else {
             let _ = ui_tx.send(format!("\x1b[93m⚠ User '{}' not found\x1b[0m\n", target_nickname)).await;
+            let _ = ui_tx.send("\x1b[90mThey may be offline or using a different nickname.\x1b[0m\n".to_string()).await;
+            return true;
         }
-        return true;
     }
     false
 }
