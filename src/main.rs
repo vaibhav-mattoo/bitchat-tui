@@ -562,7 +562,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let dm_count = chat_context.as_ref().unwrap().active_dms.len();
                 
                 let status_lines = vec![
-                    "\n\x1b[38;5;46m━━━ Connection Status ━━━\x1b[0m".to_string(),
+                    "\x1b[38;5;46m━━━ Connection Status ━━━\x1b[0m".to_string(),
                     "\x1b[38;5;40m▶ Network\x1b[0m".to_string(),
                     format!("  Connected peers: {}", peer_count),
                     format!("  Active channels: {}", channel_count),

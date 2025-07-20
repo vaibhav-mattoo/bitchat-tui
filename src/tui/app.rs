@@ -284,32 +284,36 @@ impl App {
             return;
         }
 
-        if let Some(captures) = Regex::new(r"^system: (.+)$").unwrap().captures(trimmed) {
-            let content = captures.get(1).unwrap().as_str().to_string();
-            let lines: Vec<&str> = content.split('\n').collect();
-            
-            for line in lines {
-                let trimmed_line = line.trim();
-                if !trimmed_line.is_empty() {
-                    let msg = Message { sender: "system".to_string(), timestamp: chrono::Local::now().format("%H:%M").to_string(), content: trimmed_line.to_string(), is_self: false };
-                    
-                    // Check if we're in a DM conversation or channel conversation
-                    let (dm_target, channel_name) = self.current_conv.clone().unwrap_or((None, None));
-                    if let Some(target) = dm_target {
-                        // We're in a DM, add to DM messages
-                        self.dm_messages.entry(target).or_default().push(msg);
-                    } else if let Some(channel) = channel_name {
-                        // We're in a channel, add to channel messages
-                        self.channel_messages.entry(channel).or_default().push(msg);
-                    } else {
-                        // Fallback to current channel (shouldn't happen but just in case)
-                        let current_channel = self.get_selected_channel_name();
-                        self.channel_messages.entry(current_channel.clone()).or_default().push(msg);
+        if Regex::new(r"^system: (.+)$").unwrap().is_match(trimmed) {
+            // For system messages, we need to preserve the original message with colors
+            // So we'll work with the original raw_message instead of the cleaned one
+            if let Some(captures_raw) = Regex::new(r"^system: (.+)$").unwrap().captures(&raw_message) {
+                let content = captures_raw.get(1).unwrap().as_str().to_string();
+                let lines: Vec<&str> = content.split('\n').collect();
+                
+                for line in lines {
+                    let trimmed_line = line.trim();
+                    if !trimmed_line.is_empty() {
+                        let msg = Message { sender: "system".to_string(), timestamp: chrono::Local::now().format("%H:%M").to_string(), content: trimmed_line.to_string(), is_self: false };
+                        
+                        // Check if we're in a DM conversation or channel conversation
+                        let (dm_target, channel_name) = self.current_conv.clone().unwrap_or((None, None));
+                        if let Some(target) = dm_target {
+                            // We're in a DM, add to DM messages
+                            self.dm_messages.entry(target).or_default().push(msg);
+                        } else if let Some(channel) = channel_name {
+                            // We're in a channel, add to channel messages
+                            self.channel_messages.entry(channel).or_default().push(msg);
+                        } else {
+                            // Fallback to current channel (shouldn't happen but just in case)
+                            let current_channel = self.get_selected_channel_name();
+                            self.channel_messages.entry(current_channel.clone()).or_default().push(msg);
+                        }
                     }
                 }
+                self.scroll_to_bottom_current_conversation();
+                return;
             }
-            self.scroll_to_bottom_current_conversation();
-            return;
         }
 
         if trimmed.contains(&self.nickname) { return; }
