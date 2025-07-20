@@ -39,7 +39,7 @@ use persistence::{AppState, load_state, save_state};
 use packet_parser::{parse_bitchat_packet, generate_keys_and_payload};
 use packet_creation::create_bitchat_packet;
 use command_handling::{
-    handle_number_switching, handle_help_command, handle_name_command, handle_list_command,
+    handle_help_command, handle_name_command,
     handle_join_command, handle_exit_command, handle_reply_command, handle_public_command,
     handle_online_command, handle_channels_command, handle_dm_command, handle_block_command,
     handle_unblock_command, handle_clear_command, handle_status_command, handle_leave_command,
@@ -87,6 +87,9 @@ async fn setup_bluetooth_connection(ui_tx: mpsc::Sender<String>) -> Result<Perip
         ui_tx.send("[1] Scanning for bitchat service...\n".to_string()).await.map_err(|e| e.to_string())?;
     }
     
+    let start_time = std::time::Instant::now();
+    let timeout_duration = Duration::from_secs(30);
+    
     let peripheral = loop {
         if let Some(p) = find_peripheral(&adapter).await? {
             ui_tx.send("\x1b[90m» Found bitchat service! Connecting...\x1b[0m\n".to_string()).await.map_err(|e| e.to_string())?;
@@ -96,6 +99,23 @@ async fn setup_bluetooth_connection(ui_tx: mpsc::Sender<String>) -> Result<Perip
             adapter.stop_scan().await?;
             break p;
         }
+        
+        // Check if we've exceeded the timeout
+        if start_time.elapsed() >= timeout_duration {
+            adapter.stop_scan().await?;
+            let error_message = [
+                "\n\x1b[91m❌ No BitChat service found\x1b[0m",
+                "\x1b[90mScan timed out after 30 seconds.\x1b[0m",
+                "\x1b[90mPlease check:\x1b[0m",
+                "\x1b[90m  • Another device is running BitChat\x1b[0m",
+                "\x1b[90m  • Bluetooth is enabled on both devices\x1b[0m",
+                "\x1b[90m  • You're within Bluetooth range\x1b[0m",
+                "\x1b[90m  • The other device is advertising the BitChat service\x1b[0m",
+            ].join("\n");
+            ui_tx.send(error_message).await.map_err(|e| e.to_string())?;
+            return Err("No BitChat service found within 30 seconds.".into());
+        }
+        
         time::sleep(Duration::from_secs(1)).await;
     };
 
@@ -248,9 +268,29 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         favorites: favs.clone().unwrap_or_default(),
                         identity_key: id_key.clone(),
             encrypted_channel_passwords: encrypted_passwords.clone(),
-                    }
+        }
                 }));
                 post_connect_initialized = true;
+                
+                // Initialize TUI blocked list with current blocked users
+                if let (Some(blocked_peers), Some(peers), Some(encryption_service)) = (
+                    blocked_peers.as_ref(), peers.as_ref(), encryption_service.as_ref()
+                ) {
+                    let blocked_nicknames: Vec<String> = peers.lock().await.iter()
+                        .filter_map(|(peer_id, peer)| {
+                            if let Some(fp) = encryption_service.get_peer_fingerprint(peer_id) {
+                                if blocked_peers.contains(&fp) {
+                                    peer.nickname.clone()
+                                } else {
+                                    None
+                                }
+                            } else {
+                                None
+                            }
+                        })
+                        .collect();
+                    app.update_blocked_list(blocked_nicknames);
+                }
             }
         }
 
@@ -259,10 +299,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             if let Ok(Some(notification)) = tokio::time::timeout(std::time::Duration::from_millis(1), notification_stream.next()).await {
                 let mut peers_lock = peers.as_ref().unwrap().lock().await;
                 let ui_tx = ui_tx.clone();
-                match parse_bitchat_packet(&notification.value) {
-                    Ok(packet) => {
-                        if packet.sender_id_str == my_peer_id { continue; }
-                        match packet.msg_type {
+    match parse_bitchat_packet(&notification.value) {
+        Ok(packet) => {
+            if packet.sender_id_str == my_peer_id { continue; }
+            match packet.msg_type {
                             MessageType::Announce => handle_announce_message(&packet, &mut peers_lock, ui_tx.clone()).await,
                             MessageType::Message => handle_message_packet(&packet, &notification.value, &mut peers_lock, bloom.as_mut().unwrap(), discovered_channels.as_mut().unwrap(), password_protected_channels.as_mut().unwrap(), channel_keys.as_mut().unwrap(), chat_context.as_mut().unwrap(), delivery_tracker.as_mut().unwrap(), encryption_service.as_ref().unwrap(), peripheral.as_ref().unwrap(), cmd_char.as_ref().unwrap(), &nickname, &my_peer_id, blocked_peers.as_ref().unwrap(), ui_tx.clone()).await,
                             MessageType::FragmentStart | MessageType::FragmentContinue | MessageType::FragmentEnd => handle_fragment_packet(&packet, &notification.value, fragment_collector.as_mut().unwrap(), &mut peers_lock, bloom.as_mut().unwrap(), discovered_channels.as_mut().unwrap(), password_protected_channels.as_mut().unwrap(), chat_context.as_mut().unwrap(), encryption_service.as_ref().unwrap(), peripheral.as_ref().unwrap(), cmd_char.as_ref().unwrap(), &nickname, &my_peer_id, blocked_peers.as_ref().unwrap(), ui_tx.clone()).await,
@@ -284,11 +324,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             MessageType::DeliveryAck => handle_delivery_ack_message(&packet, &notification.value, encryption_service.as_ref().unwrap(), delivery_tracker.as_mut().unwrap(), peripheral.as_ref().unwrap(), cmd_char.as_ref().unwrap(), &my_peer_id, ui_tx.clone()).await,
                             MessageType::DeliveryStatusRequest => handle_delivery_status_request_message(&packet, ui_tx.clone()).await,
                             MessageType::ReadReceipt => handle_read_receipt_message(&packet, ui_tx.clone()).await,
-                            _ => {}
-                        }
-                    },
-                    Err(_e) => { /* Silently ignore unparseable packets */ }
-                }
+                _ => {}
+            }
+        },
+        Err(_e) => { /* Silently ignore unparseable packets */ }
+    }
             }
         }
 
@@ -426,9 +466,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         // 5. Handle input from the input box (from input_rx)
         while let Ok(line) = input_rx.try_recv() {
             let ui_tx = ui_tx.clone();
-            if handle_number_switching(&line, chat_context.as_mut().unwrap(), ui_tx.clone()).await { continue; }
-                if handle_help_command(&line, ui_tx.clone()).await { continue; }
-            if handle_list_command(&line, chat_context.as_mut().unwrap(), ui_tx.clone()).await { continue; }
+            if handle_help_command(&line, ui_tx.clone()).await { continue; }
             if handle_name_command(&line, &mut nickname, &my_peer_id, peripheral.as_ref().unwrap(), cmd_char.as_ref().unwrap(), blocked_peers.as_ref().unwrap(), channel_creators.as_ref().unwrap(), chat_context.as_mut().unwrap(), password_protected_channels.as_ref().unwrap(), channel_key_commitments.as_ref().unwrap(), app_state.as_ref().unwrap(), create_app_state.as_ref().unwrap().as_ref(), ui_tx.clone()).await { 
                 // Set the pending nickname update signal to trigger TUI update
                 app.pending_nickname_update = Some(nickname.clone());
@@ -442,22 +480,40 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     // Update TUI state
                     app.join_channel(channel_name.clone());
                     
-                    // Send system message to TUI
-                    let system_msg = format!("Joined channel {}", channel_name);
+                    // Check if this is a password-protected channel
+                    let is_password_protected = password_protected_channels.as_ref().unwrap().contains(&channel_name);
+                    let has_password = channel_keys.as_ref().unwrap().contains_key(&channel_name);
+                    
+                    // Send appropriate system message to TUI
+                    let system_msg = if is_password_protected && has_password {
+                        format!("Joined password-protected channel {}", channel_name)
+                    } else {
+                        format!("Joined channel {}", channel_name)
+                    };
                     app.add_log_message(format!("system: {}", system_msg));
                     
                     // Handle backend join logic
-                    if handle_join_command(&line, password_protected_channels.as_ref().unwrap(), channel_keys.as_mut().unwrap(), discovered_channels.as_mut().unwrap(), chat_context.as_mut().unwrap(), channel_key_commitments.as_mut().unwrap(), app_state.as_mut().unwrap(), create_app_state.as_ref().unwrap().as_ref(), &nickname, peripheral.as_ref().unwrap(), cmd_char.as_ref().unwrap(), channel_creators.as_ref().unwrap(), blocked_peers.as_ref().unwrap(), ui_tx.clone()).await { 
-                    continue;
-                }
+                    if handle_join_command(&line, password_protected_channels.as_ref().unwrap(), channel_keys.as_mut().unwrap(), discovered_channels.as_mut().unwrap(), chat_context.as_mut().unwrap(), channel_key_commitments.as_mut().unwrap(), app_state.as_mut().unwrap(), create_app_state.as_ref().unwrap().as_ref(), &nickname, peripheral.as_ref().unwrap(), cmd_char.as_ref().unwrap(), channel_creators.as_ref().unwrap(), blocked_peers.as_ref().unwrap(), ui_tx.clone(), &mut app).await { 
+                        continue;
+                    }
                 } else {
                     let _ = ui_tx.send("\x1b[93m⚠ Usage: /j #<channel> [password]\x1b[0m\n".to_string()).await;
                     continue;
                 }
             }
-            if handle_exit_command(&line, blocked_peers.as_ref().unwrap(), channel_creators.as_ref().unwrap(), chat_context.as_ref().unwrap(), password_protected_channels.as_ref().unwrap(), channel_key_commitments.as_ref().unwrap(), app_state.as_ref().unwrap(), create_app_state.as_ref().unwrap().as_ref(), &nickname, ui_tx.clone()).await { break; }
-            if handle_reply_command(&line, chat_context.as_mut().unwrap(), ui_tx.clone()).await { continue; }
-            if handle_public_command(&line, chat_context.as_mut().unwrap(), ui_tx.clone()).await { continue; }
+            if handle_exit_command(&line, blocked_peers.as_ref().unwrap(), channel_creators.as_ref().unwrap(), chat_context.as_ref().unwrap(), password_protected_channels.as_ref().unwrap(), channel_key_commitments.as_ref().unwrap(), app_state.as_ref().unwrap(), create_app_state.as_ref().unwrap().as_ref(), &nickname, ui_tx.clone(), &mut app).await { break; }
+            if handle_reply_command(&line, chat_context.as_mut().unwrap(), ui_tx.clone()).await { 
+                // Update TUI to reflect DM mode if we entered DM mode
+                if let ChatMode::PrivateDM { nickname: target_nickname, .. } = &chat_context.as_ref().unwrap().current_mode {
+                    app.switch_to_dm(target_nickname.clone());
+                }
+                continue; 
+            }
+            if handle_public_command(&line, chat_context.as_mut().unwrap(), ui_tx.clone()).await { 
+                // Update TUI to reflect public chat mode
+                app.switch_to_public();
+                continue; 
+            }
             if handle_online_command(&line, peers.as_ref().unwrap(), ui_tx.clone()).await { continue; }
             if handle_channels_command(&line, chat_context.as_ref().unwrap(), channel_keys.as_ref().unwrap(), password_protected_channels.as_ref().unwrap(), ui_tx.clone()).await { continue; }
             if handle_dm_command(&line, chat_context.as_mut().unwrap(), peers.as_ref().unwrap(), &nickname, &my_peer_id, delivery_tracker.as_mut().unwrap(), encryption_service.as_ref().unwrap(), peripheral.as_ref().unwrap(), cmd_char.as_ref().unwrap(), ui_tx.clone(), &mut app).await { 
@@ -467,15 +523,26 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
                 continue; 
             }
-            if handle_block_command(&line, blocked_peers.as_mut().unwrap(), peers.as_ref().unwrap(), encryption_service.as_ref().unwrap(), channel_creators.as_ref().unwrap(), chat_context.as_mut().unwrap(), password_protected_channels.as_ref().unwrap(), channel_key_commitments.as_ref().unwrap(), app_state.as_ref().unwrap(), create_app_state.as_ref().unwrap().as_ref(), &nickname, ui_tx.clone()).await { continue; }
-            if handle_unblock_command(&line, blocked_peers.as_mut().unwrap(), peers.as_ref().unwrap(), encryption_service.as_ref().unwrap(), channel_creators.as_ref().unwrap(), chat_context.as_mut().unwrap(), password_protected_channels.as_ref().unwrap(), channel_key_commitments.as_ref().unwrap(), app_state.as_ref().unwrap(), create_app_state.as_ref().unwrap().as_ref(), &nickname, ui_tx.clone()).await { continue; }
+            if handle_block_command(&line, blocked_peers.as_mut().unwrap(), peers.as_ref().unwrap(), encryption_service.as_ref().unwrap(), channel_creators.as_ref().unwrap(), chat_context.as_mut().unwrap(), password_protected_channels.as_ref().unwrap(), channel_key_commitments.as_ref().unwrap(), app_state.as_ref().unwrap(), create_app_state.as_ref().unwrap().as_ref(), &nickname, ui_tx.clone(), &mut app).await { continue; }
+            if handle_unblock_command(&line, blocked_peers.as_mut().unwrap(), peers.as_ref().unwrap(), encryption_service.as_ref().unwrap(), channel_creators.as_ref().unwrap(), chat_context.as_mut().unwrap(), password_protected_channels.as_ref().unwrap(), channel_key_commitments.as_ref().unwrap(), app_state.as_ref().unwrap(), create_app_state.as_ref().unwrap().as_ref(), &nickname, ui_tx.clone(), &mut app).await { continue; }
             if handle_clear_command(&line, chat_context.as_mut().unwrap(), ui_tx.clone()).await { 
                 app.pending_clear_conversation = true;
                 continue; 
             }
             if handle_status_command(&line, peers.as_ref().unwrap(), chat_context.as_ref().unwrap(), &nickname, &my_peer_id, ui_tx.clone()).await { continue; }
-            if handle_leave_command(&line, chat_context.as_mut().unwrap(), channel_keys.as_mut().unwrap(), app_state.as_mut().unwrap(), &my_peer_id, peripheral.as_ref().unwrap(), cmd_char.as_ref().unwrap(), ui_tx.clone()).await { continue; }
-            if handle_pass_command(&line, chat_context.as_ref().unwrap(), channel_creators.as_mut().unwrap(), channel_keys.as_mut().unwrap(), password_protected_channels.as_mut().unwrap(), app_state.as_mut().unwrap(), &my_peer_id, peripheral.as_ref().unwrap(), cmd_char.as_ref().unwrap(), ui_tx.clone()).await { continue; }
+            if handle_leave_command(&line, chat_context.as_mut().unwrap(), channel_keys.as_mut().unwrap(), app_state.as_mut().unwrap(), &my_peer_id, peripheral.as_ref().unwrap(), cmd_char.as_ref().unwrap(), ui_tx.clone(), &mut app).await { 
+                // Update TUI to reflect public chat mode (since leaving a channel switches to public)
+                app.switch_to_public();
+                continue; 
+            }
+            if handle_pass_command(&line, chat_context.as_ref().unwrap(), channel_creators.as_mut().unwrap(), channel_keys.as_mut().unwrap(), password_protected_channels.as_mut().unwrap(), app_state.as_mut().unwrap(), &my_peer_id, peripheral.as_ref().unwrap(), cmd_char.as_ref().unwrap(), ui_tx.clone()).await { 
+                // Add system message to TUI to indicate password was set
+                if let ChatMode::Channel(channel) = &chat_context.as_ref().unwrap().current_mode {
+                    let system_msg = format!("Password set for channel {}", channel);
+                    app.add_log_message(format!("system: {}", system_msg));
+                }
+                continue; 
+            }
             if handle_transfer_command(&line, chat_context.as_ref().unwrap(), channel_creators.as_mut().unwrap(), password_protected_channels.as_ref().unwrap(), channel_keys.as_ref().unwrap(), &my_peer_id, peers.as_ref().unwrap(), peripheral.as_ref().unwrap(), cmd_char.as_ref().unwrap(), ui_tx.clone()).await { continue; }
             if line.starts_with("/") {
                 let unknown_cmd_msg = format!("\x1b[93m⚠  Unknown command: {}\x1b[0m\n\x1b[90mType /help to see available commands.\x1b[0m\n", line.split_whitespace().next().unwrap_or(""));
@@ -486,7 +553,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 handle_private_dm_message(&line, &nickname, &my_peer_id, target_nickname, target_peer_id, delivery_tracker.as_mut().unwrap(), encryption_service.as_ref().unwrap(), peripheral.as_ref().unwrap(), cmd_char.as_ref().unwrap(), chat_context.as_ref().unwrap(), ui_tx.clone()).await;
                 continue;
             }
-            handle_regular_message(&line, &nickname, &my_peer_id, chat_context.as_ref().unwrap(), password_protected_channels.as_ref().unwrap(), channel_keys.as_mut().unwrap(), encryption_service.as_ref().unwrap(), delivery_tracker.as_mut().unwrap(), peripheral.as_ref().unwrap(), cmd_char.as_ref().unwrap(), ui_tx.clone()).await;
+            handle_regular_message(&line, &nickname, &my_peer_id, chat_context.as_ref().unwrap(), password_protected_channels.as_ref().unwrap(), channel_keys.as_mut().unwrap(), encryption_service.as_ref().unwrap(), delivery_tracker.as_mut().unwrap(), peripheral.as_ref().unwrap(), cmd_char.as_ref().unwrap(), ui_tx.clone(), &mut app).await;
         }
         // 6. Render the UI
         terminal.draw(|f| ui::render(&mut app, f)).unwrap();

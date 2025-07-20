@@ -12,7 +12,6 @@ pub enum ChatMode {
     PrivateDM { nickname: String, peer_id: String },
 }
 
-// FIX 1: Added `conversation_map` field.
 // FIX 2: Changed `active_channels` from Vec to HashSet for consistency and efficiency.
 #[derive(Debug, Clone)]
 pub struct ChatContext {
@@ -20,18 +19,15 @@ pub struct ChatContext {
     pub active_channels: HashSet<String>,
     pub active_dms: HashMap<String, String>, // nickname -> peer_id
     pub last_private_sender: Option<(String, String)>, // (peer_id, nickname)
-    pub conversation_map: HashMap<usize, ChatMode>,
 }
 
 impl ChatContext {
-    // FIX 3: Initialize the new `conversation_map` field.
     pub fn new() -> Self {
         Self {
             current_mode: ChatMode::Public,
             active_channels: HashSet::new(),
             active_dms: HashMap::new(),
             last_private_sender: None,
-            conversation_map: HashMap::new(),
         }
     }
 
@@ -47,16 +43,7 @@ impl ChatContext {
         self.format_prompt()
     }
 
-    // FIX 4: Made this function silent. It only changes state and returns a boolean.
-    // The UI feedback ("Switched to...") should be handled by the caller.
-    pub fn switch_to_number(&mut self, num: usize) -> bool {
-        if let Some(mode) = self.conversation_map.get(&num).cloned() {
-            self.current_mode = mode;
-            true
-        } else {
-            false
-        }
-    }
+
 
     // FIX 5: Made all state-changing methods silent.
     pub fn add_channel(&mut self, channel: &str) {
@@ -93,77 +80,7 @@ impl ChatContext {
         self.active_channels.remove(channel);
     }
     
-    // This function is fully corrected.
-    pub fn get_conversation_list(&mut self) -> String {
-        let mut output = String::new();
-        let mut append_line = |s: String| {
-            output.push_str(&s);
-            output.push('\n');
-        };
 
-        append_line("\n╭─── Active Conversations ───╮".to_string());
-        append_line("│                            │".to_string());
-
-        let current_indicator = |is_current: bool| if is_current { "→" } else { " " };
-        
-        self.conversation_map.clear();
-
-        // --- Public Chat ---
-        let is_public_current = matches!(&self.current_mode, ChatMode::Public);
-        self.conversation_map.insert(1, ChatMode::Public);
-        append_line(format!("│ {} [1] Public              │", current_indicator(is_public_current)));
-        
-        let mut num = 2;
-
-        // --- Channels ---
-        let mut sorted_channels = self.active_channels.iter().cloned().collect::<Vec<_>>();
-        sorted_channels.sort();
-
-        for channel in &sorted_channels {
-            let is_channel_current = matches!(&self.current_mode, ChatMode::Channel(ch) if ch == channel);
-            let display_name = if channel.len() > 18 {
-                format!("{}..", &channel[..16])
-            } else {
-                channel.clone()
-            };
-            append_line(format!("│ {} [{}] {}{}│",
-                current_indicator(is_channel_current),
-                num,
-                display_name,
-                " ".repeat(20 - display_name.len())
-            ));
-            self.conversation_map.insert(num, ChatMode::Channel(channel.clone()));
-            num += 1;
-        }
-
-        // --- DMs ---
-        // FIX 6: Correctly iterate over the HashMap.
-        let mut sorted_dms = self.active_dms.iter().map(|(k, v)| (k.clone(), v.clone())).collect::<Vec<_>>();
-        sorted_dms.sort_by(|a, b| a.0.cmp(&b.0)); // Sort by nickname
-
-        for (nick, peer_id) in &sorted_dms {
-            let is_dm_current = matches!(&self.current_mode, ChatMode::PrivateDM { nickname, .. } if nickname == nick);
-            let dm_text = format!("DM: {}", nick);
-            let display_name = if dm_text.len() > 18 {
-                format!("{}..", &dm_text[..16])
-            } else {
-                dm_text
-            };
-            append_line(format!("│ {} [{}] {}{}│",
-                current_indicator(is_dm_current),
-                num,
-                display_name,
-                " ".repeat(20 - display_name.len())
-            ));
-            self.conversation_map.insert(num, ChatMode::PrivateDM { nickname: nick.clone(), peer_id: peer_id.clone() });
-            num += 1;
-        }
-
-        append_line("│                            │".to_string());
-        append_line("╰────────────────────────────╯".to_string());
-
-        output
-    }
 }
 
 pub fn format_message_display(
@@ -222,8 +139,6 @@ pub fn get_help_text() -> String {
         "  \x1b[36m/clear\x1b[0m        Clear the screen",
         "  \x1b[36m/exit\x1b[0m         Quit BitChat\n",
         "\x1b[38;5;40m▶ Navigation\x1b[0m",
-        "  \x1b[36m1-9\x1b[0m           Quick switch to conversation",
-        "  \x1b[36m/list\x1b[0m         Show all conversations",
         "  \x1b[36m/public\x1b[0m       Go to public chat\n",
         "\x1b[38;5;40m▶ Messaging\x1b[0m",
         "  \x1b[90m(type normally to send in current mode)\x1b[0m",

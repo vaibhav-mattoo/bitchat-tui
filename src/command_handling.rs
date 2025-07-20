@@ -5,6 +5,7 @@ use btleplug::api::{WriteType, Peripheral as _};
 use btleplug::platform::Peripheral;
 use tokio::sync::mpsc;
 use sha2::{Sha256, Digest};
+use chrono;
 use crate::data_structures::{MessageType, Peer, DeliveryTracker, DebugLevel, DEBUG_LEVEL};
 use crate::terminal_ux::{ChatContext, ChatMode,get_help_text};
 use crate::persistence::{AppState, save_state, encrypt_password, EncryptedPassword};
@@ -14,21 +15,7 @@ use crate::packet_delivery::send_channel_announce;
 use crate::payload_handling::create_bitchat_message_payload_full;
 use crate::fragmentation::send_packet_with_fragmentation;
 
-pub async fn handle_number_switching(line: &str, chat_context: &mut ChatContext, ui_tx: mpsc::Sender<String>) -> bool {
-    if line.len() == 1 {
-        if let Ok(num) = line.parse::<usize>() {
-            if chat_context.switch_to_number(num) {
-                if unsafe { DEBUG_LEVEL >= DebugLevel::Basic } {
-                    let _ = ui_tx.send(format!("{}\n", chat_context.get_status_line())).await;
-                }
-            } else {
-                let _ = ui_tx.send("» Invalid conversation number\n".to_string()).await;
-            }
-            return true;
-        }
-    }
-    false
-}
+
 
 pub async fn handle_help_command(line: &str, ui_tx: mpsc::Sender<String>) -> bool {
     if line == "/help" {
@@ -79,14 +66,7 @@ pub async fn handle_name_command(
 }
 
 
-pub async fn handle_list_command(line: &str, chat_context: &mut ChatContext, ui_tx: mpsc::Sender<String>) -> bool {
-    if line == "/list" {
-        let list = chat_context.get_conversation_list();
-        let _ = ui_tx.send(list).await;
-        return true;
-    }
-    false
-}
+
 
 pub async fn handle_join_command(
     line: &str,
@@ -103,6 +83,7 @@ pub async fn handle_join_command(
     channel_creators: &HashMap<String, String>,
     blocked_peers: &HashSet<String>,
     ui_tx: mpsc::Sender<String>,
+    app: &mut crate::tui::app::App,
 ) -> bool {
     if line.starts_with("/j ") {
         let parts: Vec<&str> = line.split_whitespace().collect();
@@ -145,6 +126,27 @@ pub async fn handle_join_command(
                  let _ = ui_tx.send(format!("❌ Channel {} is password-protected. Use: /j {} <password>\n", channel_name, channel_name)).await;
                  return true;
              }
+        } else if password_protected_channels.contains(&channel_name) && channel_keys.contains_key(&channel_name) {
+            // User is already in a password-protected channel but we need to verify the password is correct
+            if let Some(password) = parts.get(2) {
+                let key = EncryptionService::derive_channel_key(password, &channel_name);
+                if let Some(expected_commitment) = channel_key_commitments.get(&channel_name) {
+                    let test_commitment = hex::encode(sha2::Sha256::digest(&key));
+                    if &test_commitment != expected_commitment {
+                        // User has wrong password - warn them
+                        let warning_msg = format!("⚠️  WARNING: You entered channel {} with the wrong password. Your messages are encrypted and others cannot see them. Leave the channel with /leave and rejoin with the correct password.", channel_name);
+                        let _ = ui_tx.send(format!("{}\n", warning_msg)).await;
+                        
+                        // Add system message to TUI
+                        let system_msg = format!("Wrong password detected for channel {}. Messages are encrypted and others cannot see them. Use /leave and rejoin with correct password.", channel_name);
+                        app.add_log_message(format!("system: {}", system_msg));
+                        
+                        return true;
+                    }
+                }
+            }
+            chat_context.switch_to_channel(&channel_name);
+            let _ = ui_tx.send(format!("\x1b[90m» Switched to channel {}\x1b[0m\n", channel_name)).await;
         } else {
             chat_context.switch_to_channel(&channel_name);
             let _ = ui_tx.send(format!("\x1b[90m» Switched to channel {}\x1b[0m\n", channel_name)).await;
@@ -167,6 +169,7 @@ pub async fn handle_exit_command(
     create_app_state: &dyn Fn(&HashSet<String>, &HashMap<String, String>, &Vec<String>, &HashSet<String>, &HashMap<String, String>, &HashMap<String, EncryptedPassword>, &str) -> AppState,
     nickname: &str,
     ui_tx: mpsc::Sender<String>,
+    app: &mut crate::tui::app::App,
 ) -> bool {
     if line == "/exit" {
         let channels_vec: Vec<String> = chat_context.active_channels.iter().cloned().collect();
@@ -174,6 +177,8 @@ pub async fn handle_exit_command(
         if let Err(e) = save_state(&state_to_save) {
             let _ = ui_tx.send(format!("Warning: Could not save state: {}\n", e)).await;
         }
+        // Set the quit flag to exit the application
+        app.should_quit = true;
         return true;
     }
     false
@@ -364,7 +369,8 @@ pub async fn handle_dm_command(
                         app.add_dm_message(target_nickname.to_string(), private_message.to_string());
                         
                         // Add a system message to the current conversation to confirm the DM was sent
-                        let system_msg = format!("<you->{}> {}", target_nickname, private_message);
+                        let timestamp = chrono::Local::now();
+                        let system_msg = format!("[{}|DM] <you → {}> {}", timestamp.format("%H:%M"), target_nickname, private_message);
                         app.add_log_message(format!("system: {}", system_msg));
                         
                         if unsafe { DEBUG_LEVEL >= DebugLevel::Basic } {
@@ -400,6 +406,7 @@ pub async fn handle_block_command(
     create_app_state: &dyn Fn(&HashSet<String>, &HashMap<String, String>, &Vec<String>, &HashSet<String>, &HashMap<String, String>, &HashMap<String, EncryptedPassword>, &str) -> AppState,
     nickname: &str,
     ui_tx: mpsc::Sender<String>,
+    app: &mut crate::tui::app::App,
 ) -> bool {
     if line.starts_with("/block") {
         let parts: Vec<&str> = line.split_whitespace().collect();
@@ -417,6 +424,23 @@ pub async fn handle_block_command(
                     if let Err(e) = save_state(&state_to_save) {
                         let _ = ui_tx.send(format!("Warning: Could not save state: {}\n", e)).await;
                     }
+                    
+                    // Update TUI blocked list
+                    let blocked_nicknames: Vec<String> = peers.lock().await.iter()
+                        .filter_map(|(peer_id, peer)| {
+                            if let Some(fp) = encryption_service.get_peer_fingerprint(peer_id) {
+                                if blocked_peers.contains(&fp) {
+                                    peer.nickname.clone()
+                                } else {
+                                    None
+                                }
+                            } else {
+                                None
+                            }
+                        })
+                        .collect();
+                    app.update_blocked_list(blocked_nicknames);
+                    
                     let _ = ui_tx.send(format!("\n\x1b[92m✓ Blocked {}\x1b[0m\n", target_name)).await;
                 }
             } else {
@@ -441,6 +465,7 @@ pub async fn handle_unblock_command(
     create_app_state: &dyn Fn(&HashSet<String>, &HashMap<String, String>, &Vec<String>, &HashSet<String>, &HashMap<String, String>, &HashMap<String, EncryptedPassword>, &str) -> AppState,
     nickname: &str,
     ui_tx: mpsc::Sender<String>,
+    app: &mut crate::tui::app::App,
 ) -> bool {
     if line.starts_with("/unblock ") {
         let target_name = line.trim_start_matches("/unblock ").trim().trim_start_matches('@');
@@ -456,6 +481,23 @@ pub async fn handle_unblock_command(
                      if let Err(e) = save_state(&state_to_save) {
                         let _ = ui_tx.send(format!("Warning: Could not save state: {}\n", e)).await;
                      }
+                     
+                     // Update TUI blocked list
+                     let blocked_nicknames: Vec<String> = peers.lock().await.iter()
+                         .filter_map(|(peer_id, peer)| {
+                             if let Some(fp) = encryption_service.get_peer_fingerprint(peer_id) {
+                                 if blocked_peers.contains(&fp) {
+                                     peer.nickname.clone()
+                                 } else {
+                                     None
+                                 }
+                             } else {
+                                 None
+                             }
+                         })
+                         .collect();
+                     app.update_blocked_list(blocked_nicknames);
+                     
                      let _ = ui_tx.send(format!("\n\x1b[92m✓ Unblocked {}\x1b[0m\n", target_name)).await;
                 }
             }
@@ -505,6 +547,7 @@ pub async fn handle_leave_command(
     peripheral: &Peripheral,
     cmd_char: &btleplug::api::Characteristic,
     ui_tx: mpsc::Sender<String>,
+    app: &mut crate::tui::app::App,
 ) -> bool {
     if line == "/leave" {
         if let ChatMode::Channel(channel) = &chat_context.current_mode.clone() {
@@ -517,6 +560,9 @@ pub async fn handle_leave_command(
             app_state.encrypted_channel_passwords.remove(channel);
             chat_context.remove_channel(channel);
             chat_context.switch_to_public();
+            
+            // Remove channel from TUI sidebar
+            app.channels.retain(|c| c != channel);
             
             let _ = ui_tx.send(format!("\x1b[90m» Left channel {}\x1b[0m\n", channel)).await;
         } else {

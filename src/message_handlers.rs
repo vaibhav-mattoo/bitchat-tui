@@ -64,9 +64,7 @@ pub async fn handle_private_dm_message(
             if send_packet_with_fragmentation(peripheral, cmd_char, packet, my_peer_id).await.is_err() {
                 let _ = ui_tx.send("\n\x1b[91m❌ Failed to send private message\x1b[0m\n\x1b[90mThe message could not be delivered. Connection may have been lost.\x1b[0m\n".to_string()).await;
             } else {
-                let timestamp = chrono::Local::now();
-                let display = format_message_display(timestamp, nickname, line, true, false, None, Some(target_nickname), nickname);
-                let _ = ui_tx.send(format!("\x1b[1A\r\x1b[K{}\n", display)).await;
+                // Don't send any formatted message here - let the main loop handle it via the TUI
             }
         },
         Err(e) => {
@@ -89,6 +87,7 @@ pub async fn handle_regular_message(
     peripheral: &Peripheral,
     cmd_char: &btleplug::api::Characteristic,
     ui_tx: mpsc::Sender<String>,
+    _app: &mut crate::tui::app::App,
 ) {
     if unsafe { DEBUG_LEVEL >= DebugLevel::Basic } {
         let _ = ui_tx.send(format!("{} > {}\n", chat_context.format_prompt(), line)).await;
@@ -101,6 +100,9 @@ pub async fn handle_regular_message(
             let _ = ui_tx.send(format!("❌ Cannot send to password-protected channel {}. Join with password first.\n", channel)).await;
             return;
         }
+        
+        // Note: We can't easily verify if the user has the wrong password here without the original password
+        // The warning about wrong passwords is handled in the join command when they try to rejoin
     }
     
     let (message_payload, message_id) = if let Some(ref channel) = current_channel {
