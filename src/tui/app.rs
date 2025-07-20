@@ -502,4 +502,32 @@ impl App {
             }
         }
     }
+    
+    pub fn get_input_box_height(&self, available_width: usize) -> usize {
+        let input_text = self.input.value();
+        if input_text.is_empty() {
+            return 3; // Minimum height
+        }
+        
+        // Calculate how many lines the input text would need
+        let chars: Vec<char> = input_text.chars().collect();
+        let mut lines_needed = 1;
+        let mut current_line_length = 0;
+        
+        for &ch in &chars {
+            if ch == '\n' {
+                lines_needed += 1;
+                current_line_length = 0;
+            } else {
+                current_line_length += 1;
+                if current_line_length >= available_width.saturating_sub(2) { // Account for borders
+                    lines_needed += 1;
+                    current_line_length = 0;
+                }
+            }
+        }
+        
+        // Ensure minimum height and reasonable maximum
+        std::cmp::max(3, std::cmp::min(lines_needed + 2, 10)) // +2 for borders, max 10 lines
+    }
 }

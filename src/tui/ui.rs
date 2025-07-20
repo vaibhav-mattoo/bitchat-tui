@@ -23,12 +23,15 @@ pub fn render(app: &mut App, f: &mut Frame) {
     let main_panel_area = chunks[0];
     let sidebar_area = chunks[1];
 
+    // Calculate dynamic input box height
+    let input_box_height = app.get_input_box_height(main_panel_area.width as usize) as u16;
+    
     let main_chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Min(1),    // Message history
-            Constraint::Length(3), // Input box
-            Constraint::Length(1), // Help bar
+            Constraint::Min(1),                    // Message history
+            Constraint::Length(input_box_height),  // Input box (dynamic height)
+            Constraint::Length(1),                 // Help bar
         ])
         .split(main_panel_area);
 
