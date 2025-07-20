@@ -477,36 +477,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 continue;
             }
             if line == "/help" {
-                let help_lines = vec![
-                    "\x1b[38;5;46m━━━ BitChat Commands ━━━\x1b[0m".to_string(),
-                    "\x1b[38;5;40m▶ General\x1b[0m".to_string(),
-                    "  \x1b[36m/help\x1b[0m                    Show this help menu".to_string(),
-                    "  \x1b[36m/name\x1b[0m \x1b[90m<name>\x1b[0m           Change your nickname".to_string(),
-                    "  \x1b[36m/status\x1b[0m                  Show connection info".to_string(),
-                    "  \x1b[36m/clear\x1b[0m                   Clear the screen".to_string(),
-                    "  \x1b[36m/exit\x1b[0m                    Quit BitChat".to_string(),
-                    "\x1b[38;5;40m▶ Navigation\x1b[0m".to_string(),
-                    "  \x1b[36m/public\x1b[0m                  Go to public chat".to_string(),
-                    "\x1b[38;5;40m▶ Messaging\x1b[0m".to_string(),
-                    "  \x1b[36m/dm\x1b[0m \x1b[90m<name> [msg]\x1b[0m       Start or send a private message".to_string(),
-                    "  \x1b[36m/reply\x1b[0m                   Reply to last private message".to_string(),
-                    "\x1b[38;5;40m▶ Channels\x1b[0m".to_string(),
-                    "  \x1b[36m/j\x1b[0m \x1b[90m#channel [pwd]\x1b[0m      Join/create a channel".to_string(),
-                    "  \x1b[36m/leave\x1b[0m                   Leave current channel".to_string(),
-                    "  \x1b[36m/pass\x1b[0m \x1b[90m<pwd>\x1b[0m            Set channel password (owner only)".to_string(),
-                    "  \x1b[36m/transfer\x1b[0m \x1b[90m@user\x1b[0m        Transfer ownership (owner only)".to_string(),
-                    "\x1b[38;5;40m▶ Discovery\x1b[0m".to_string(),
-                    "  \x1b[36m/channels\x1b[0m                List all discovered channels".to_string(),
-                    "  \x1b[36m/w\x1b[0m, \x1b[36m/online\x1b[0m           Show who's online".to_string(),
-                    "\x1b[38;5;40m▶ Privacy & Security\x1b[0m".to_string(),
-                    "  \x1b[36m/block\x1b[0m \x1b[90m@user\x1b[0m           Block a user".to_string(),
-                    "  \x1b[36m/block\x1b[0m                   List blocked users".to_string(),
-                    "  \x1b[36m/unblock\x1b[0m \x1b[90m@user\x1b[0m         Unblock a user".to_string(),
-                    "\x1b[38;5;46m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\x1b[0m".to_string(),
-                ];
-                
-                for line in help_lines {
-                    app.add_log_message(format!("system: {}", line));
+                let help_text = terminal_ux::get_help_text();
+                let lines: Vec<&str> = help_text.split('\n').collect();
+                for line in lines {
+                    let trimmed_line = line.trim();
+                    if !trimmed_line.is_empty() {
+                        app.add_log_message(format!("system: {}", trimmed_line));
+                    }
                 }
                 continue;
             }
@@ -616,8 +593,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
             if handle_transfer_command(&line, chat_context.as_ref().unwrap(), channel_creators.as_mut().unwrap(), password_protected_channels.as_ref().unwrap(), channel_keys.as_ref().unwrap(), &my_peer_id, peers.as_ref().unwrap(), peripheral.as_ref().unwrap(), cmd_char.as_ref().unwrap(), ui_tx.clone()).await { continue; }
             if line.starts_with("/") {
-                let unknown_cmd_msg = format!("\x1b[93m⚠  Unknown command: {}\x1b[0m\n\x1b[90mType /help to see available commands.\x1b[0m\n", line.split_whitespace().next().unwrap_or(""));
-                let _ = ui_tx.send(unknown_cmd_msg).await;
+                let unknown_cmd = line.split_whitespace().next().unwrap_or("");
+                let unknown_cmd_msg = format!("⚠  Unknown command: {}", unknown_cmd);
+                app.add_log_message(format!("system: {}", unknown_cmd_msg));
+                app.add_log_message("system: Type /help to see available commands.".to_string());
                 continue;
             }
             // Check if we're connected before handling regular messages

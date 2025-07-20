@@ -128,7 +128,36 @@ pub fn format_message_display(
     }
 }
 
-
+// FIX 7: Converted print_help to return a string.
+pub fn get_help_text() -> String {
+    vec![
+        "\n━━━ BitChat Commands ━━━\n",
+        "▶ General",
+        "  /help                    Show this help menu",
+        "  /name <name>           Change your nickname",
+        "  /status                  Show connection info",
+        "  /clear                   Clear the screen",
+        "  /exit                    Quit BitChat\n",
+        "▶ Navigation",
+        "  /public                  Go to public chat\n",
+        "▶ Messaging",
+        "  /dm <name> [msg]       Start or send a private message",
+        "  /reply                   Reply to last private message\n",
+        "▶ Channels",
+        "  /j #channel [pwd]      Join/create a channel",
+        "  /leave                   Leave current channel",
+        "  /pass <pwd>            Set channel password (owner only)",
+        "  /transfer @user        Transfer ownership (owner only)\n",
+        "▶ Discovery",
+        "  /channels                List all discovered channels",
+        "  /w, /online           Show who's online\n",
+        "▶ Privacy & Security",
+        "  /block @user           Block a user",
+        "  /block                   List blocked users",
+        "  /unblock @user         Unblock a user\n",
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+    ].join("\n")
+}
 
 // Helper to extract message target from chat mode
 impl ChatMode {

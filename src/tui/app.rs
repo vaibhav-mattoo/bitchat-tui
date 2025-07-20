@@ -475,20 +475,23 @@ impl App {
 
     pub fn clear_current_conversation(&mut self) {
         // Check if we're in a DM conversation
-        if let Some(user_idx) = self.sidebar_state.people_selected {
-            if let Some(user) = self.people.get(user_idx) {
-                if let Some(messages) = self.dm_messages.get_mut(user) {
-                    messages.clear();
-                }
-                self.msg_scroll = 0;
-                return;
+        let (dm_target, channel_name) = self.current_conv.clone().unwrap_or((None, None));
+        if let Some(target) = dm_target {
+            // We're in a DM, clear DM messages
+            if let Some(messages) = self.dm_messages.get_mut(&target) {
+                messages.clear();
             }
-        }
-        
-        // Otherwise clear channel messages (including public)
-        let current_channel = self.get_selected_channel_name();
-        if let Some(messages) = self.channel_messages.get_mut(&current_channel) {
-            messages.clear();
+        } else if let Some(channel) = channel_name {
+            // We're in a channel, clear channel messages
+            if let Some(messages) = self.channel_messages.get_mut(&channel) {
+                messages.clear();
+            }
+        } else {
+            // Fallback to current channel (shouldn't happen but just in case)
+            let current_channel = self.get_selected_channel_name();
+            if let Some(messages) = self.channel_messages.get_mut(&current_channel) {
+                messages.clear();
+            }
         }
         self.msg_scroll = 0;
     }
