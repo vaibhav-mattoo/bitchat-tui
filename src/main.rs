@@ -11,7 +11,7 @@ use tokio::sync::Mutex;
 use bloomfilter::Bloom;
 use rand::Rng;
 mod tui;
-use tui::app::App;
+use tui::app::{App, TuiPhase};
 use tui::tui as tui_mod;
 use tui::ui;
 use tui::event;
@@ -39,7 +39,7 @@ use persistence::{AppState, load_state, save_state};
 use packet_parser::{parse_bitchat_packet, generate_keys_and_payload};
 use packet_creation::create_bitchat_packet;
 use command_handling::{
-    handle_help_command, handle_name_command,
+    handle_name_command,
     handle_join_command, handle_exit_command, handle_reply_command, handle_public_command,
     handle_online_command, handle_channels_command, handle_dm_command, handle_block_command,
     handle_unblock_command, handle_clear_command, handle_status_command, handle_leave_command,
@@ -466,7 +466,27 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         // 5. Handle input from the input box (from input_rx)
         while let Ok(line) = input_rx.try_recv() {
             let ui_tx = ui_tx.clone();
-            if handle_help_command(&line, ui_tx.clone()).await { continue; }
+            // Handle /exit immediately to avoid panics during connecting phase
+            if line.trim() == "/exit" {
+                app.should_quit = true;
+                break 'mainloop;
+            }
+            // Check if we're in connecting phase (popup is shown) and show wait message for any command
+            if matches!(app.phase, TuiPhase::Connecting) && line.starts_with("/") {
+                app.add_log_message("system: Please wait for Bluetooth connection to be established before using commands.".to_string());
+                continue;
+            }
+            if line == "/help" {
+                let help_text = terminal_ux::get_help_text();
+                let lines: Vec<&str> = help_text.split('\n').collect();
+                for line in lines {
+                    let trimmed_line = line.trim();
+                    if !trimmed_line.is_empty() {
+                        app.add_log_message(format!("system: {}", trimmed_line));
+                    }
+                }
+                continue;
+            }
             
             // Check if we're connected before handling commands that require connection
             if !app.connected && !line.starts_with("/help") && !line.starts_with("/exit") {

@@ -7,7 +7,7 @@ use tokio::sync::mpsc;
 use sha2::{Sha256, Digest};
 use chrono;
 use crate::data_structures::{MessageType, Peer, DeliveryTracker, DebugLevel, DEBUG_LEVEL};
-use crate::terminal_ux::{ChatContext, ChatMode,get_help_text};
+use crate::terminal_ux::{ChatContext, ChatMode};
 use crate::persistence::{AppState, save_state, encrypt_password, EncryptedPassword};
 use crate::encryption::EncryptionService;
 use crate::packet_creation::{create_bitchat_packet, create_bitchat_packet_with_recipient_and_signature};
@@ -17,14 +17,7 @@ use crate::fragmentation::send_packet_with_fragmentation;
 
 
 
-pub async fn handle_help_command(line: &str, ui_tx: mpsc::Sender<String>) -> bool {
-    if line == "/help" {
-        let help_text = get_help_text(); // Use the imported function
-        let _ = ui_tx.send(format!("{}\n", help_text)).await;
-        return true;
-    }
-    false
-}
+
 
 pub async fn handle_name_command(
     line: &str,
