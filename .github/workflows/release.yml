@@ -1,0 +1,115 @@
+name: Cross-compile and Upload Bitchat-TUI Release Assets
+
+on:
+  push:
+    tags:
+      - 'v*'  # Triggers the workflow on tag pushes like v1.0, v2.1.1, etc.
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+  APP_NAME: bitchat-tui
+
+jobs:
+  build-and-upload:
+    name: Build and Upload Release Assets
+    strategy:
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-musl
+            os: ubuntu-latest
+            ext: tar.gz
+          - target: aarch64-unknown-linux-musl
+            os: ubuntu-latest
+            ext: tar.gz
+          - target: armv7-unknown-linux-musleabihf
+            os: ubuntu-latest
+            ext: tar.gz
+          - target: x86_64-apple-darwin
+            os: macos-latest
+            ext: tar.gz
+          - target: aarch64-apple-darwin
+            os: macos-latest
+            ext: tar.gz
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+            ext: zip
+
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout code at the pushed tag
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          target: ${{ matrix.target }}
+          override: true
+
+      - name: Install dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: cargo install cross --git https://github.com/cross-rs/cross
+
+      - name: Install dependencies (macOS)
+        if: runner.os == 'macOS'
+        run: brew install pkg-config
+
+      - name: Build with cross (Linux)
+        if: runner.os == 'Linux'
+        run: cross build --locked --release --target ${{ matrix.target }}
+
+      - name: Build with cargo (non-Linux)
+        if: runner.os != 'Linux'
+        run: cargo build --locked --release --target ${{ matrix.target }}
+
+      - name: Strip binary (Unix)
+        if: runner.os != 'Windows'
+        run: strip "target/${{ matrix.target }}/release/${{ env.APP_NAME }}"
+
+      - name: Package binary
+        shell: bash
+        run: |
+          set -e
+          TARGET="${{ matrix.target }}"
+          EXT="${{ matrix.ext }}"
+          OUTDIR="release"
+          
+          # Determine binary name based on OS
+          if [[ "$TARGET" == *windows* ]]; then
+            BIN_NAME="${{ env.APP_NAME }}.exe"
+          else
+            BIN_NAME="${{ env.APP_NAME }}"
+          fi
+          
+          # Create release directory and copy binary
+          mkdir -p "$OUTDIR"
+          cp "target/${TARGET}/release/${BIN_NAME}" "${BIN_NAME}"
+          
+          # Package into tar.gz or zip
+          if [[ "$TARGET" == *windows* ]]; then
+            7z a -tzip "$OUTDIR/${{ env.APP_NAME }}-${TARGET}.zip" "${BIN_NAME}" LICENSE README.md || \
+              zip "$OUTDIR/${{ env.APP_NAME }}-${TARGET}.zip" "${BIN_NAME}" LICENSE README.md
+          else
+            tar czf "$OUTDIR/${{ env.APP_NAME }}-${TARGET}.tar.gz" "${BIN_NAME}" LICENSE README.md
+          fi
+
+      - name: List packaged files
+        shell: bash
+        run: ls -lh release/
+
+      - name: Get release info
+        id: get_release
+        uses: bruceadams/get-release@v1.3.2
+        with:
+          tag_name: ${{ github.ref_name }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload release asset
+        uses: shogo82148/actions-upload-release-asset@v1
+        with:
+          upload_url: ${{ steps.get_release.outputs.upload_url }}
+          asset_path: release/${{ env.APP_NAME }}-${{ matrix.target }}.${{ matrix.ext }}
