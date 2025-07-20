@@ -28,6 +28,7 @@ pub fn render(app: &mut App, f: &mut Frame) {
         .constraints([
             Constraint::Min(1),    // Message history
             Constraint::Length(3), // Input box
+            Constraint::Length(1), // Help bar
         ])
         .split(main_panel_area);
 
@@ -36,6 +37,9 @@ pub fn render(app: &mut App, f: &mut Frame) {
     
     // Render the input box
     widgets::input_box::render(f, app, main_chunks[1]);
+
+    // Render the help bar
+    widgets::help_bar::render(f, app, main_chunks[2]);
 
     // Render the sidebar
     widgets::sidebar::render(f, app, sidebar_area);

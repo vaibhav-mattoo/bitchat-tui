@@ -53,16 +53,88 @@ pub fn render(f: &mut Frame, app: &mut App, area: Rect) {
         &[]
     };
 
-    let msg_items: Vec<ListItem> = visible_messages.iter().map(|msg| {
+    let msg_items: Vec<ListItem> = visible_messages.iter().flat_map(|msg| {
         let color = if msg.sender == "system" { Color::White } else if msg.is_self { Color::Cyan } else { Color::LightGreen };
-        let line = Line::from(vec![
-            Span::styled(format!("[{}]", msg.timestamp), Style::default().fg(Color::DarkGray)),
-            Span::raw(" "),
-            Span::styled(format!("{}:", msg.sender), Style::default().fg(color).add_modifier(Modifier::BOLD)),
-            Span::raw(" "),
-            Span::raw(&msg.content),
-        ]);
-        ListItem::new(line)
+        
+        // Calculate available width for content (accounting for timestamp, sender, and spacing)
+        let timestamp_width = msg.timestamp.len() + 2; // [timestamp]
+        let sender_width = msg.sender.len() + 1; // sender:
+        let prefix_width = timestamp_width + 1 + sender_width + 1; // [time] sender: 
+        let available_width = messages_area.width.saturating_sub(2) as usize; // Account for borders
+        let content_width = available_width.saturating_sub(prefix_width);
+        
+        if content_width == 0 {
+            // Fallback if no space for content
+            let line = Line::from(vec![
+                Span::styled(format!("[{}]", msg.timestamp), Style::default().fg(Color::DarkGray)),
+                Span::raw(" "),
+                Span::styled(format!("{}:", msg.sender), Style::default().fg(color).add_modifier(Modifier::BOLD)),
+                Span::raw(" "),
+                Span::raw(&msg.content),
+            ]);
+            vec![ListItem::new(line)]
+        } else {
+            // Split content into lines that fit the available width using character-based operations
+            let mut lines = Vec::new();
+            let content = &msg.content;
+            
+            // Convert to character vector for safe operations
+            let chars: Vec<char> = content.chars().collect();
+            let mut current_pos = 0;
+            let mut first_line = true;
+            
+            while current_pos < chars.len() {
+                // Calculate how many characters can fit on this line
+                let remaining_chars = chars.len() - current_pos;
+                let max_chars_for_line = content_width.min(remaining_chars);
+                
+                // Find the best break point (prefer space, fallback to character limit)
+                let break_point = if max_chars_for_line == remaining_chars {
+                    // Last line, take all remaining characters
+                    max_chars_for_line
+                } else {
+                    // Look for the last space in the available range
+                    let search_range = &chars[current_pos..current_pos + max_chars_for_line];
+                    if let Some(last_space_idx) = search_range.iter().rposition(|&c| c == ' ') {
+                        last_space_idx + 1 // +1 to include the space
+                    } else {
+                        // No space found, break at character limit
+                        max_chars_for_line
+                    }
+                };
+                
+                // Extract the line content
+                let line_chars = &chars[current_pos..current_pos + break_point];
+                let line_content: String = line_chars.iter().collect();
+                
+                // Create the line
+                if first_line {
+                    let line = Line::from(vec![
+                        Span::styled(format!("[{}]", msg.timestamp), Style::default().fg(Color::DarkGray)),
+                        Span::raw(" "),
+                        Span::styled(format!("{}:", msg.sender), Style::default().fg(color).add_modifier(Modifier::BOLD)),
+                        Span::raw(" "),
+                        Span::raw(line_content.clone()),
+                    ]);
+                    lines.push(ListItem::new(line));
+                    first_line = false;
+                } else {
+                    let line = Line::from(vec![
+                        Span::raw(" ".repeat(prefix_width)),
+                        Span::raw(line_content.clone()),
+                    ]);
+                    lines.push(ListItem::new(line));
+                }
+                
+                // Move to next position, skipping leading spaces on continuation lines
+                current_pos += break_point;
+                if !first_line && current_pos < chars.len() && chars[current_pos] == ' ' {
+                    current_pos += 1; // Skip the space at the beginning of continuation lines
+                }
+            }
+            
+            lines
+        }
     }).collect();
 
     let border_style = if app.focus_area == FocusArea::MainPanel { Style::default().fg(Color::Green) } else { Style::default() };

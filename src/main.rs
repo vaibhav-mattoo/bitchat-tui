@@ -467,6 +467,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         while let Ok(line) = input_rx.try_recv() {
             let ui_tx = ui_tx.clone();
             if handle_help_command(&line, ui_tx.clone()).await { continue; }
+            
+            // Check if we're connected before handling commands that require connection
+            if !app.connected && !line.starts_with("/help") && !line.starts_with("/exit") {
+                app.add_log_message("system: Please wait for Bluetooth connection to be established before using commands.".to_string());
+                continue;
+            }
+            
             if handle_name_command(&line, &mut nickname, &my_peer_id, peripheral.as_ref().unwrap(), cmd_char.as_ref().unwrap(), blocked_peers.as_ref().unwrap(), channel_creators.as_ref().unwrap(), chat_context.as_mut().unwrap(), password_protected_channels.as_ref().unwrap(), channel_key_commitments.as_ref().unwrap(), app_state.as_ref().unwrap(), create_app_state.as_ref().unwrap().as_ref(), ui_tx.clone()).await { 
                 // Set the pending nickname update signal to trigger TUI update
                 app.pending_nickname_update = Some(nickname.clone());
@@ -549,6 +556,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let _ = ui_tx.send(unknown_cmd_msg).await;
                 continue;
             }
+            // Check if we're connected before handling regular messages
+            if !app.connected {
+                app.add_log_message("system: Please wait for Bluetooth connection to be established before sending messages.".to_string());
+                continue;
+            }
+            
             if let ChatMode::PrivateDM { nickname: target_nickname, peer_id: target_peer_id } = &chat_context.as_ref().unwrap().current_mode {
                 handle_private_dm_message(&line, &nickname, &my_peer_id, target_nickname, target_peer_id, delivery_tracker.as_mut().unwrap(), encryption_service.as_ref().unwrap(), peripheral.as_ref().unwrap(), cmd_char.as_ref().unwrap(), chat_context.as_ref().unwrap(), ui_tx.clone()).await;
                 continue;
