@@ -508,28 +508,7 @@ pub async fn handle_clear_command(line: &str, _chat_context: &ChatContext, _ui_t
     false
 }
 
-pub async fn handle_status_command(
-    line: &str,
-    peers: &Arc<Mutex<HashMap<String, Peer>>>,
-    chat_context: &ChatContext,
-    nickname: &str,
-    my_peer_id: &str,
-    ui_tx: mpsc::Sender<String>,
-) -> bool {
-    if line == "/status" {
-        let peer_count = peers.lock().await.len();
-        let channel_count = chat_context.active_channels.len();
-        let dm_count = chat_context.active_dms.len();
-        
-        let status_msg = format!(
-            "\n╭─── Connection Status ───╮\n│ Peers connected: {:3}    │\n│ Active channels: {:3}    │\n│ Active DMs:      {:3}    │\n│                         │\n│ Your nickname: {:^9}│\n│ Your ID: {}...│\n╰─────────────────────────╯\n",
-            peer_count, channel_count, dm_count, if nickname.len() > 9 { &nickname[..9] } else { nickname }, &my_peer_id[..8]
-        );
-        let _ = ui_tx.send(status_msg).await;
-        return true;
-    }
-    false
-}
+
 
 pub async fn handle_leave_command(
     line: &str,

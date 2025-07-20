@@ -42,7 +42,7 @@ use command_handling::{
     handle_name_command,
     handle_join_command, handle_exit_command, handle_reply_command, handle_public_command,
     handle_online_command, handle_channels_command, handle_dm_command, handle_block_command,
-    handle_unblock_command, handle_clear_command, handle_status_command, handle_leave_command,
+    handle_unblock_command, handle_clear_command, handle_leave_command,
     handle_pass_command, handle_transfer_command
 };
 use message_handlers::{handle_private_dm_message, handle_regular_message};
@@ -556,7 +556,28 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 app.pending_clear_conversation = true;
                 continue; 
             }
-            if handle_status_command(&line, peers.as_ref().unwrap(), chat_context.as_ref().unwrap(), &nickname, &my_peer_id, ui_tx.clone()).await { continue; }
+            if line == "/status" {
+                let peer_count = peers.as_ref().unwrap().lock().await.len();
+                let channel_count = chat_context.as_ref().unwrap().active_channels.len();
+                let dm_count = chat_context.as_ref().unwrap().active_dms.len();
+                
+                let status_lines = vec![
+                    "\n\x1b[38;5;46m━━━ Connection Status ━━━\x1b[0m".to_string(),
+                    "\x1b[38;5;40m▶ Network\x1b[0m".to_string(),
+                    format!("  Connected peers: {}", peer_count),
+                    format!("  Active channels: {}", channel_count),
+                    format!("  Active DMs: {}", dm_count),
+                    "\x1b[38;5;40m▶ Your Info\x1b[0m".to_string(),
+                    format!("  Nickname: {}", nickname),
+                    format!("  ID: {}", my_peer_id),
+                    "\x1b[38;5;46m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\x1b[0m".to_string(),
+                ];
+                
+                for line in status_lines {
+                    app.add_log_message(format!("system: {}", line));
+                }
+                continue;
+            }
             if handle_leave_command(&line, chat_context.as_mut().unwrap(), channel_keys.as_mut().unwrap(), app_state.as_mut().unwrap(), &my_peer_id, peripheral.as_ref().unwrap(), cmd_char.as_ref().unwrap(), ui_tx.clone(), &mut app).await { 
                 // Update TUI to reflect public chat mode (since leaving a channel switches to public)
                 app.switch_to_public();
