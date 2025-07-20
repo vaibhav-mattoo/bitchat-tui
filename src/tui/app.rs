@@ -389,6 +389,9 @@ impl App {
 
     pub fn switch_to_channel(&mut self, channel_name: String) {
         if let Some(channel_idx) = self.channels.iter().position(|c| c == &channel_name) {
+            // Clear other selections when switching to a channel
+            self.sidebar_state.public_selected = None;
+            self.sidebar_state.people_selected = None;
             self.sidebar_state.channel_selected = Some(channel_idx);
             self.update_current_conversation();
             self.update_sidebar_flat_selection();

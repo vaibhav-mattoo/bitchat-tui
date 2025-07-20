@@ -521,6 +521,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     
                     // Handle backend join logic
                     if handle_join_command(&line, password_protected_channels.as_ref().unwrap(), channel_keys.as_mut().unwrap(), discovered_channels.as_mut().unwrap(), chat_context.as_mut().unwrap(), channel_key_commitments.as_mut().unwrap(), app_state.as_mut().unwrap(), create_app_state.as_ref().unwrap().as_ref(), &nickname, peripheral.as_ref().unwrap(), cmd_char.as_ref().unwrap(), channel_creators.as_ref().unwrap(), blocked_peers.as_ref().unwrap(), ui_tx.clone(), &mut app).await { 
+                        // Explicitly switch UI to the joined channel after successful join
+                        app.switch_to_channel(channel_name.clone());
                         continue;
                     }
                 } else {
@@ -562,15 +564,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let dm_count = chat_context.as_ref().unwrap().active_dms.len();
                 
                 let status_lines = vec![
-                    "\x1b[38;5;46m━━━ Connection Status ━━━\x1b[0m".to_string(),
-                    "\x1b[38;5;40m▶ Network\x1b[0m".to_string(),
+                    "━━━ Connection Status ━━━".to_string(),
+                    "▶ Network".to_string(),
                     format!("  Connected peers: {}", peer_count),
                     format!("  Active channels: {}", channel_count),
                     format!("  Active DMs: {}", dm_count),
-                    "\x1b[38;5;40m▶ Your Info\x1b[0m".to_string(),
+                    "▶ Your Info".to_string(),
                     format!("  Nickname: {}", nickname),
                     format!("  ID: {}", my_peer_id),
-                    "\x1b[38;5;46m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\x1b[0m".to_string(),
+                    "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━".to_string(),
                 ];
                 
                 for line in status_lines {
