@@ -40,6 +40,7 @@ macro_rules! debug_full_println {
 
 // --- pub constants ---
 
+#[allow(dead_code)]
 pub const VERSION: &str = "v1.0.0";
 
 pub const BITCHAT_SERVICE_UUID: Uuid = Uuid::from_u128(0xF47B5E2D_4A9E_4C5A_9B3F_8E1D2C3A4B5C);

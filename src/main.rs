@@ -162,15 +162,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // State for after connection
     let mut peripheral: Option<Peripheral> = None;
     let mut notification_stream = None;
-    let mut characteristics = None;
+    let mut _characteristics = None;
     let mut cmd_char = None;
     let mut post_connect_initialized = false;
     let mut my_peer_id = String::new();
     let mut app_state: Option<persistence::AppState> = None;
     let mut nickname = String::new();
     let mut encryption_service = None;
-    let mut key_exchange_payload = None;
-    let mut key_exchange_packet = None;
+    let mut _key_exchange_payload = None;
+    let mut _key_exchange_packet = None;
     let mut peers: Option<Arc<Mutex<HashMap<String, Peer>>>> = None;
     let mut bloom: Option<Bloom<String>> = None;
     let mut fragment_collector: Option<FragmentCollector> = None;
@@ -183,8 +183,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut password_protected_channels: Option<HashSet<String>> = None;
     let mut channel_key_commitments: Option<HashMap<String, String>> = None;
     let mut discovered_channels: Option<HashSet<String>> = None;
-    let mut favorites: Option<HashSet<String>> = None;
-    let mut identity_key: Option<Vec<u8>> = None;
+    let mut _favorites: Option<HashSet<String>> = None;
+    let mut _identity_key: Option<Vec<u8>> = None;
     let mut create_app_state: Option<Box<dyn Fn(&HashSet<String>, &HashMap<String, String>, &Vec<String>, &HashSet<String>, &HashMap<String, String>, &HashMap<String, persistence::EncryptedPassword>, &str) -> AppState + Send + Sync>> = None;
 
     let mut last_tick = std::time::Instant::now();
@@ -219,7 +219,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let cmd = chars.iter().find(|c| c.uuid == BITCHAT_CHARACTERISTIC_UUID).expect("Characteristic not found.").clone();
                 let _ = peripheral.subscribe(&cmd).await;
                 notification_stream = Some(peripheral.notifications().await.unwrap());
-                characteristics = Some(chars);
+                _characteristics = Some(chars);
                 cmd_char = Some(cmd);
                 // All the rest of the state initialization from the old main goes here
                 // ...
@@ -231,9 +231,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 nickname = saved_nickname_clone.clone();
                 encryption_service = Some(Arc::new(EncryptionService::new()));
                 let (kxp, _) = generate_keys_and_payload(encryption_service.as_ref().unwrap());
-                key_exchange_payload = Some(kxp.clone());
-                key_exchange_packet = Some(create_bitchat_packet(&my_peer_id, MessageType::KeyExchange, kxp));
-                let _ = peripheral.write(&cmd_char.as_ref().unwrap(), &key_exchange_packet.as_ref().unwrap(), WriteType::WithoutResponse).await;
+                _key_exchange_payload = Some(kxp.clone());
+                _key_exchange_packet = Some(create_bitchat_packet(&my_peer_id, MessageType::KeyExchange, kxp));
+                let _ = peripheral.write(&cmd_char.as_ref().unwrap(), &_key_exchange_packet.as_ref().unwrap(), WriteType::WithoutResponse).await;
                 time::sleep(Duration::from_millis(500)).await;
                 let announce_packet = create_bitchat_packet(&my_peer_id, MessageType::Announce, nickname.as_bytes().to_vec());
                 let _ = peripheral.write(&cmd_char.as_ref().unwrap(), &announce_packet, WriteType::WithoutResponse).await;
@@ -251,12 +251,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 password_protected_channels = Some(app_state.as_ref().unwrap().password_protected_channels.clone());
                 channel_key_commitments = Some(app_state.as_ref().unwrap().channel_key_commitments.clone());
                 discovered_channels = Some(HashSet::new());
-                favorites = Some(app_state.as_ref().unwrap().favorites.clone());
-                identity_key = app_state.as_ref().unwrap().identity_key.clone();
+                _favorites = Some(app_state.as_ref().unwrap().favorites.clone());
+                _identity_key = app_state.as_ref().unwrap().identity_key.clone();
                 // ...
                 // Set up the create_app_state closure
-                let favs = favorites.clone();
-                let id_key = identity_key.clone();
+                let favs = _favorites.clone();
+                let id_key = _identity_key.clone();
                 create_app_state = Some(Box::new(move |blocked, creators, channels, protected, commitments, encrypted_passwords, current_nickname| {
         AppState {
             nickname: Some(current_nickname.to_string()),
@@ -422,15 +422,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             // Reset all connection-related state
             peripheral = None;
             notification_stream = None;
-            characteristics = None;
+            _characteristics = None;
             cmd_char = None;
             post_connect_initialized = false;
             my_peer_id = String::new();
             app_state = None;
             nickname = String::new();
             encryption_service = None;
-            key_exchange_payload = None;
-            key_exchange_packet = None;
+            _key_exchange_payload = None;
+            _key_exchange_packet = None;
             peers = None;
             bloom = None;
             fragment_collector = None;
@@ -443,8 +443,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             password_protected_channels = None;
             channel_key_commitments = None;
             discovered_channels = None;
-            favorites = None;
-            identity_key = None;
+            _favorites = None;
+            _identity_key = None;
             create_app_state = None;
             
             // Spawn new Bluetooth connection setup

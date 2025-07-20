@@ -92,7 +92,7 @@ fn calculate_cursor_position(text: &str, cursor_pos: usize, max_width: usize) ->
     
     let mut line = 0;
     let mut col = 0;
-    let mut char_count = 0;
+    let mut _char_count = 0;
     
     for &ch in &chars[..cursor_chars] {
         if ch == '\n' {
@@ -105,7 +105,7 @@ fn calculate_cursor_position(text: &str, cursor_pos: usize, max_width: usize) ->
                 col = 0;
             }
         }
-        char_count += 1;
+        _char_count += 1;
     }
     
     (line, col)

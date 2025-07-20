@@ -133,6 +133,7 @@ pub fn encrypt_password(password: &str, identity_key: &[u8]) -> Result<Encrypted
 }
 
 // Decrypt a password using the identity key
+#[allow(dead_code)]
 pub fn decrypt_password(encrypted: &EncryptedPassword, identity_key: &[u8]) -> Result<String, Box<dyn std::error::Error>> {
     let key = derive_encryption_key(identity_key);
     let cipher = Aes256Gcm::new_from_slice(&key)?;

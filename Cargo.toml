@@ -1,10 +1,10 @@
 [package]
-name = "bitchat_poc"
+name = "bitchat-tui"
 version = "0.1.0"
 edition = "2021"
 
 [[bin]]
-name = "bitchat"
+name = "bitchat-tui"
 path = "src/main.rs"
 
 [dependencies]
