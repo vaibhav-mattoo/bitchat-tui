@@ -403,6 +403,33 @@ pub async fn handle_block_command(
 ) -> bool {
     if line.starts_with("/block") {
         let parts: Vec<&str> = line.split_whitespace().collect();
+        
+        // Handle /block without arguments - show list of blocked users
+        if parts.len() == 1 {
+            let blocked_nicknames: Vec<String> = peers.lock().await.iter()
+                .filter_map(|(peer_id, peer)| {
+                    if let Some(fp) = encryption_service.get_peer_fingerprint(peer_id) {
+                        if blocked_peers.contains(&fp) {
+                            peer.nickname.clone()
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+            
+            if blocked_nicknames.is_empty() {
+                let _ = ui_tx.send("system: No users are currently blocked.".to_string()).await;
+            } else {
+                let blocked_list = blocked_nicknames.join(", ");
+                let _ = ui_tx.send(format!("system: Blocked users: {}", blocked_list)).await;
+            }
+            return true;
+        }
+        
+        // Handle /block with username argument
         if parts.len() == 2 {
             let target_name = parts[1].trim_start_matches('@');
             let peer_id_to_block = peers.lock().await.iter()

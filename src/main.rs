@@ -88,7 +88,7 @@ async fn setup_bluetooth_connection(ui_tx: mpsc::Sender<String>) -> Result<Perip
     }
     
     let start_time = std::time::Instant::now();
-    let timeout_duration = Duration::from_secs(30);
+    let timeout_duration = Duration::from_secs(15);
     
     let peripheral = loop {
         if let Some(p) = find_peripheral(&adapter).await? {
@@ -105,7 +105,7 @@ async fn setup_bluetooth_connection(ui_tx: mpsc::Sender<String>) -> Result<Perip
             adapter.stop_scan().await?;
             let error_message = [
                 "\n\x1b[91m❌ No BitChat service found\x1b[0m",
-                "\x1b[90mScan timed out after 30 seconds.\x1b[0m",
+                "\x1b[90mScan timed out after 15 seconds.\x1b[0m",
                 "\x1b[90mPlease check:\x1b[0m",
                 "\x1b[90m  • Another device is running BitChat\x1b[0m",
                 "\x1b[90m  • Bluetooth is enabled on both devices\x1b[0m",
