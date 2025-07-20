@@ -128,37 +128,7 @@ pub fn format_message_display(
     }
 }
 
-// FIX 7: Converted print_help to return a string.
-pub fn get_help_text() -> String {
-    vec![
-        "\n\x1b[38;5;46m━━━ BitChat Commands ━━━\x1b[0m\n",
-        "\x1b[38;5;40m▶ General\x1b[0m",
-        "  \x1b[36m/help\x1b[0m                    Show this help menu",
-        "  \x1b[36m/name\x1b[0m \x1b[90m<name>\x1b[0m           Change your nickname",
-        "  \x1b[36m/status\x1b[0m                  Show connection info",
-        "  \x1b[36m/clear\x1b[0m                   Clear the screen",
-        "  \x1b[36m/exit\x1b[0m                    Quit BitChat\n",
-        "\x1b[38;5;40m▶ Navigation\x1b[0m",
-        "  \x1b[36m/public\x1b[0m                  Go to public chat\n",
-        "\x1b[38;5;40m▶ Messaging\x1b[0m",
 
-        "  \x1b[36m/dm\x1b[0m \x1b[90m<name> [msg]\x1b[0m       Start or send a private message",
-        "  \x1b[36m/reply\x1b[0m                   Reply to last private message\n",
-        "\x1b[38;5;40m▶ Channels\x1b[0m",
-        "  \x1b[36m/j\x1b[0m \x1b[90m#channel [pwd]\x1b[0m      Join/create a channel",
-        "  \x1b[36m/leave\x1b[0m                   Leave current channel",
-        "  \x1b[36m/pass\x1b[0m \x1b[90m<pwd>\x1b[0m            Set channel password (owner only)",
-        "  \x1b[36m/transfer\x1b[0m \x1b[90m@user\x1b[0m        Transfer ownership (owner only)\n",
-        "\x1b[38;5;40m▶ Discovery\x1b[0m",
-        "  \x1b[36m/channels\x1b[0m                List all discovered channels",
-        "  \x1b[36m/w\x1b[0m, \x1b[36m/online\x1b[0m           Show who's online\n",
-        "\x1b[38;5;40m▶ Privacy & Security\x1b[0m",
-        "  \x1b[36m/block\x1b[0m \x1b[90m@user\x1b[0m           Block a user",
-        "  \x1b[36m/block\x1b[0m                   List blocked users",
-        "  \x1b[36m/unblock\x1b[0m \x1b[90m@user\x1b[0m         Unblock a user\n",
-        "\x1b[38;5;40m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\x1b[0m",
-    ].join("\n")
-}
 
 // Helper to extract message target from chat mode
 impl ChatMode {
