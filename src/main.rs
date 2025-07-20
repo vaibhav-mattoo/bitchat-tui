@@ -137,7 +137,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Load saved state to get the nickname before initializing TUI
     let saved_state = load_state();
-    let saved_nickname = saved_state.nickname.clone().unwrap_or_else(|| "my-rust-client".to_string());
+    let saved_nickname = saved_state.nickname.clone().unwrap_or_else(|| "anonymous".to_string());
     let saved_nickname_clone = saved_nickname.clone();
     
     // Initialize the TUI with the saved nickname

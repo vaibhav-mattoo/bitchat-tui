@@ -112,7 +112,7 @@ pub struct App {
 
 impl App {
     pub fn new() -> Self {
-        Self::new_with_nickname("my-rust-client".to_string())
+        Self::new_with_nickname("anonymous".to_string())
     }
 
     pub fn new_with_nickname(nickname: String) -> Self {
