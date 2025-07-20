@@ -9,6 +9,7 @@ use sha2::Sha256;
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use x25519_dalek::{PublicKey, StaticSecret};
+use crate::debug_println;
 
 #[derive(Debug)]
 pub enum EncryptionError {
@@ -79,7 +80,7 @@ impl EncryptionService {
     /// Add peer's combined public keys
     pub fn add_peer_public_key(&self, peer_id: &str, public_key_data: &[u8]) -> Result<(), EncryptionError> {
         if public_key_data.len() != 96 {
-            println!("[CRYPTO] Invalid public key data size: {}, expected 96", public_key_data.len());
+            debug_println!("[CRYPTO] Invalid public key data size: {}, expected 96", public_key_data.len());
             return Err(EncryptionError::InvalidPublicKey);
         }
         
@@ -106,7 +107,7 @@ impl EncryptionService {
             Err(_) => {
                 // This is likely Android with the identity key bug
                 // For now, just use the signing key as identity key to maintain compatibility
-                eprintln!("[CRYPTO] Note: Peer {} appears to be Android (invalid identity key format)", peer_id);
+                debug_println!("[CRYPTO] Note: Peer {} appears to be Android (invalid identity key format)", peer_id);
                 signing_key.clone()
             }
         };

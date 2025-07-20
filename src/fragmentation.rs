@@ -2,7 +2,7 @@ use rand::Rng;
 use std::time::Duration;
 use tokio::time;
 use btleplug::api::{Peripheral, WriteType};
-use crate::{MessageType, create_bitchat_packet, parse_bitchat_packet};
+use crate::{MessageType, create_bitchat_packet, parse_bitchat_packet, debug_full_println};
 
 // Match Swift's fragment size limit: 500 bytes per fragment
 // This aligns with Swift's maxFragmentSize configuration
@@ -104,7 +104,7 @@ pub fn create_fragment_packet(sender_id: &str, fragment: Fragment) -> Vec<u8> {
     payload.push(fragment.original_type);
     
     if fragment.index == 0 || fragment.index == fragment.total - 1 {
-        println!("[DEBUG] Fragment {}/{} metadata: ID={} index_bytes={:02X}{:02X} total_bytes={:02X}{:02X} type={:02X}",
+        debug_full_println!("[DEBUG] Fragment {}/{} metadata: ID={} index_bytes={:02X}{:02X} total_bytes={:02X}{:02X} type={:02X}",
                 fragment.index + 1, fragment.total,
                 hex::encode(&fragment.fragment_id[..4]), // Show first 4 bytes of ID
                 (fragment.index >> 8) as u8, (fragment.index & 0xFF) as u8,
@@ -139,9 +139,9 @@ pub async fn send_packet_with_fragmentation(
 ) -> Result<(), Box<dyn std::error::Error>> {
     // Swift's logic: if packet > 500 bytes, fragment it
     if packet.len() > 500 {
-        println!("[FRAG] ==================== FRAGMENTATION START ====================");
-        println!("[FRAG] Original packet size: {} bytes", packet.len());
-        println!("[FRAG] Original packet hex (first 64 bytes): {}", hex::encode(&packet[..std::cmp::min(64, packet.len())]));
+        debug_full_println!("[DEBUG] ==================== FRAGMENTATION START ====================");
+        debug_full_println!("[DEBUG] Original packet size: {} bytes", packet.len());
+        debug_full_println!("[DEBUG] Original packet hex (first 64 bytes): {}", hex::encode(&packet[..std::cmp::min(64, packet.len())]));
         
         // Fragment the complete packet data into chunks
         // iOS BLE MTU is typically 185 bytes by default (can negotiate higher)
@@ -156,9 +156,9 @@ pub async fn send_packet_with_fragmentation(
         let mut fragment_id = [0u8; 8];
         rand::thread_rng().fill(&mut fragment_id);
         
-        println!("[FRAG] Fragment ID: {}", hex::encode(&fragment_id));
-        println!("[FRAG] Fragment size: {} bytes", fragment_size);
-        println!("[FRAG] Total fragments: {}", total_fragments);
+        debug_full_println!("[DEBUG] Fragment ID: {}", hex::encode(&fragment_id));
+        debug_full_println!("[DEBUG] Fragment size: {} bytes", fragment_size);
+        debug_full_println!("[DEBUG] Total fragments: {}", total_fragments);
         
         // Send fragments with Swift's timing (20ms delay)
         for (index, chunk) in chunks.iter().enumerate() {
@@ -168,10 +168,10 @@ pub async fn send_packet_with_fragmentation(
                 _ => MessageType::FragmentContinue,
             };
             
-            println!("[FRAG] --- Fragment {}/{} ---", index + 1, total_fragments);
-            println!("[FRAG] Type: {:?}", fragment_type);
-            println!("[FRAG] Chunk size: {} bytes", chunk.len());
-            println!("[FRAG] Chunk hex (first 32 bytes): {}", hex::encode(&chunk[..std::cmp::min(32, chunk.len())]));
+            debug_full_println!("[DEBUG] --- Fragment {}/{} ---", index + 1, total_fragments);
+            debug_full_println!("[DEBUG] Type: {:?}", fragment_type);
+            debug_full_println!("[DEBUG] Chunk size: {} bytes", chunk.len());
+            debug_full_println!("[DEBUG] Chunk hex (first 32 bytes): {}", hex::encode(&chunk[..std::cmp::min(32, chunk.len())]));
             
             // Create fragment payload matching Swift format exactly:
             // fragmentID (8) + index (2) + total (2) + originalType (1) + data
@@ -189,22 +189,22 @@ pub async fn send_packet_with_fragmentation(
             fragment_payload.push(MessageType::Message as u8); // Original packet type
             fragment_payload.extend_from_slice(chunk);
             
-            println!("[FRAG] Fragment header: ID={} index={:02X}{:02X} total={:02X}{:02X} type={:02X}", 
+            debug_full_println!("[DEBUG] Fragment header: ID={} index={:02X}{:02X} total={:02X}{:02X} type={:02X}", 
                     hex::encode(&fragment_id[..4]),
                     index_bytes[0], index_bytes[1],
                     total_bytes[0], total_bytes[1],
                     MessageType::Message as u8);
-            println!("[FRAG] Fragment payload size: {} bytes", fragment_payload.len());
+            debug_full_println!("[DEBUG] Fragment payload size: {} bytes", fragment_payload.len());
             
             // DETAILED PAYLOAD ANALYSIS
-            println!("[FRAG] === DETAILED PAYLOAD ANALYSIS ===");
-            println!("[FRAG] Fragment payload hex: {}", hex::encode(&fragment_payload));
-            println!("[FRAG] Fragment payload breakdown:");
-            println!("[FRAG]   Fragment ID (8 bytes): {}", hex::encode(&fragment_payload[0..8]));
-            println!("[FRAG]   Index (2 bytes): {} = {:02X}{:02X}", index, fragment_payload[8], fragment_payload[9]);
-            println!("[FRAG]   Total (2 bytes): {} = {:02X}{:02X}", total_fragments, fragment_payload[10], fragment_payload[11]);
-            println!("[FRAG]   Original type (1 byte): {} = {:02X}", MessageType::Message as u8, fragment_payload[12]);
-            println!("[FRAG]   Data ({} bytes): {}", chunk.len(), hex::encode(&fragment_payload[13..std::cmp::min(13 + 32, fragment_payload.len())]));
+            debug_full_println!("[DEBUG] === DETAILED PAYLOAD ANALYSIS ===");
+            debug_full_println!("[DEBUG] Fragment payload hex: {}", hex::encode(&fragment_payload));
+            debug_full_println!("[DEBUG] Fragment payload breakdown:");
+            debug_full_println!("[DEBUG]   Fragment ID (8 bytes): {}", hex::encode(&fragment_payload[0..8]));
+            debug_full_println!("[DEBUG]   Index (2 bytes): {} = {:02X}{:02X}", index, fragment_payload[8], fragment_payload[9]);
+            debug_full_println!("[DEBUG]   Total (2 bytes): {} = {:02X}{:02X}", total_fragments, fragment_payload[10], fragment_payload[11]);
+            debug_full_println!("[DEBUG]   Original type (1 byte): {} = {:02X}", MessageType::Message as u8, fragment_payload[12]);
+            debug_full_println!("[DEBUG]   Data ({} bytes): {}", chunk.len(), hex::encode(&fragment_payload[13..std::cmp::min(13 + 32, fragment_payload.len())]));
             
             // Create fragment packet
             let fragment_packet = create_bitchat_packet(
@@ -213,18 +213,18 @@ pub async fn send_packet_with_fragmentation(
                 fragment_payload
             );
             
-            println!("[FRAG] Final fragment packet size: {} bytes", fragment_packet.len());
-            println!("[FRAG] Final packet hex (first 64 bytes): {}", hex::encode(&fragment_packet[..std::cmp::min(64, fragment_packet.len())]));
+            debug_full_println!("[DEBUG] Final fragment packet size: {} bytes", fragment_packet.len());
+            debug_full_println!("[DEBUG] Final packet hex (first 64 bytes): {}", hex::encode(&fragment_packet[..std::cmp::min(64, fragment_packet.len())]));
             
             // DECODE THE FINAL PACKET TO VERIFY
-            println!("[FRAG] === FINAL PACKET VERIFICATION ===");
+            debug_full_println!("[DEBUG] === FINAL PACKET VERIFICATION ===");
             if let Ok(parsed_packet) = parse_bitchat_packet(&fragment_packet) {
-                println!("[FRAG] ✅ Fragment packet parsed successfully");
-                println!("[FRAG] Packet type: {:?}", parsed_packet.msg_type);
-                println!("[FRAG] Packet TTL: {}", parsed_packet.ttl);
-                println!("[FRAG] Packet sender: {}", parsed_packet.sender_id_str);
-                println!("[FRAG] Packet payload size: {} bytes", parsed_packet.payload.len());
-                println!("[FRAG] Packet payload hex: {}", hex::encode(&parsed_packet.payload));
+                debug_full_println!("[DEBUG] ✅ Fragment packet parsed successfully");
+                debug_full_println!("[DEBUG] Packet type: {:?}", parsed_packet.msg_type);
+                debug_full_println!("[DEBUG] Packet TTL: {}", parsed_packet.ttl);
+                debug_full_println!("[DEBUG] Packet sender: {}", parsed_packet.sender_id_str);
+                debug_full_println!("[DEBUG] Packet payload size: {} bytes", parsed_packet.payload.len());
+                debug_full_println!("[DEBUG] Packet payload hex: {}", hex::encode(&parsed_packet.payload));
                 
                 // Verify the fragment payload structure
                 if parsed_packet.payload.len() >= 13 {
@@ -233,21 +233,21 @@ pub async fn send_packet_with_fragmentation(
                     let frag_total = ((parsed_packet.payload[10] as u16) << 8) | (parsed_packet.payload[11] as u16);
                     let frag_orig_type = parsed_packet.payload[12];
                     
-                    println!("[FRAG] Verified fragment ID: {}", hex::encode(frag_id));
-                    println!("[FRAG] Verified fragment index: {}", frag_index);
-                    println!("[FRAG] Verified fragment total: {}", frag_total);
-                    println!("[FRAG] Verified original type: 0x{:02X}", frag_orig_type);
+                    debug_full_println!("[DEBUG] Verified fragment ID: {}", hex::encode(frag_id));
+                    debug_full_println!("[DEBUG] Verified fragment index: {}", frag_index);
+                    debug_full_println!("[DEBUG] Verified fragment total: {}", frag_total);
+                    debug_full_println!("[DEBUG] Verified original type: 0x{:02X}", frag_orig_type);
                     
                     if frag_index == index as u16 && frag_total == total_fragments && frag_orig_type == MessageType::Message as u8 {
-                        println!("[FRAG] ✅ Fragment payload verification passed");
+                        debug_full_println!("[DEBUG] ✅ Fragment payload verification passed");
                     } else {
-                        println!("[FRAG] ❌ Fragment payload verification failed");
+                        debug_full_println!("[DEBUG] ❌ Fragment payload verification failed");
                     }
                 } else {
-                    println!("[FRAG] ❌ Fragment payload too small for verification");
+                    debug_full_println!("[DEBUG] ❌ Fragment payload too small for verification");
                 }
             } else {
-                println!("[FRAG] ❌ Failed to parse fragment packet");
+                debug_full_println!("[DEBUG] ❌ Failed to parse fragment packet");
             }
             
             // Send fragment
@@ -255,7 +255,7 @@ pub async fn send_packet_with_fragmentation(
                 return Err(format!("Failed to send fragment {}/{} (size: {} bytes)", index + 1, total_fragments, fragment_packet.len()).into());
             }
             
-            println!("[FRAG] ✓ Fragment {}/{} sent successfully", index + 1, total_fragments);
+            debug_full_println!("[DEBUG] ✓ Fragment {}/{} sent successfully", index + 1, total_fragments);
             
             // Swift's 20ms delay between fragments
             if index < chunks.len() - 1 {
@@ -263,8 +263,8 @@ pub async fn send_packet_with_fragmentation(
             }
         }
         
-        println!("[FRAG] ✓ Successfully sent {} fragments", total_fragments);
-        println!("[FRAG] ==================== FRAGMENTATION END ====================");
+        debug_full_println!("[DEBUG] ✓ Successfully sent {} fragments", total_fragments);
+        debug_full_println!("[DEBUG] ==================== FRAGMENTATION END ====================");
         Ok(())
     } else {
         // Packet is small enough, send directly

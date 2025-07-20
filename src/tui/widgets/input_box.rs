@@ -13,7 +13,7 @@ pub fn render(f: &mut Frame, app: &mut App, area: Rect) {
     let border_style = if app.focus_area == FocusArea::InputBox {
         Style::default().fg(ratatui::style::Color::Green)
     } else {
-        Style::default()
+        Style::default().fg(ratatui::style::Color::White)
     };
     
     // Create wrapped text for the input
@@ -25,7 +25,7 @@ pub fn render(f: &mut Frame, app: &mut App, area: Rect) {
     
     let input = Paragraph::new(lines)
         .style(Style::default().fg(ratatui::style::Color::Yellow))
-        .block(Block::default().borders(Borders::ALL).title("Message").border_style(border_style));
+        .block(Block::default().borders(Borders::ALL).title("Type a message").border_style(border_style));
 
     f.render_widget(input, area);
 

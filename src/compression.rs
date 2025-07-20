@@ -1,4 +1,5 @@
 use lz4_flex::{compress_prepend_size, decompress_size_prepended};
+use crate::debug_full_println;
 
 #[allow(dead_code)]
 const COMPRESSION_THRESHOLD: usize = 100;
@@ -27,7 +28,7 @@ pub fn decompress(data: &[u8]) -> Result<Vec<u8>, String> {
 pub fn decompress_raw(data: &[u8], output_size: usize) -> Result<Vec<u8>, String> {
     // Check for Apple's compression format markers
     if data.len() > 4 && &data[0..4] == b"bv41" {
-        println!("[DECOMPRESS] Detected Apple bv41 compression format");
+        debug_full_println!("[DECOMPRESS] Detected Apple bv41 compression format");
         
         // Apple's bv41 format structure:
         // Bytes 0-3: "bv41" magic marker
@@ -47,20 +48,20 @@ pub fn decompress_raw(data: &[u8], output_size: usize) -> Result<Vec<u8>, String
                                       ((data[10] as u32) << 16) | 
                                       ((data[11] as u32) << 24)) as usize;
             
-            println!("[DECOMPRESS] bv41 header: original_size={}, compressed_size={}", original_size_le, compressed_size_le);
-            println!("[DECOMPRESS] Expected output_size={}", output_size);
+            debug_full_println!("[DECOMPRESS] bv41 header: original_size={}, compressed_size={}", original_size_le, compressed_size_le);
+            debug_full_println!("[DECOMPRESS] Expected output_size={}", output_size);
             
             // The compressed_size in the header tells us exactly how much data to use
             // The LZ4 data starts at offset 12 and continues for compressed_size bytes
             if data.len() >= 12 + compressed_size_le {
                 let lz4_data = &data[12..12 + compressed_size_le];
-                println!("[DECOMPRESS] Attempting to decompress {} bytes of LZ4 data", compressed_size_le);
-                println!("[DECOMPRESS] First 32 bytes of LZ4 data: {:02x?}", 
+                debug_full_println!("[DECOMPRESS] Attempting to decompress {} bytes of LZ4 data", compressed_size_le);
+                debug_full_println!("[DECOMPRESS] First 32 bytes of LZ4 data: {:02x?}", 
                          &lz4_data[..std::cmp::min(32, lz4_data.len())]);
                 
                 // Try standard LZ4 decompression
                 if let Ok(result) = lz4_flex::decompress(lz4_data, output_size) {
-                    println!("[DECOMPRESS] Successfully decompressed bv41 format using exact compressed size");
+                    debug_full_println!("[DECOMPRESS] Successfully decompressed bv41 format using exact compressed size");
                     return Ok(result);
                 }
                 
@@ -69,18 +70,18 @@ pub fn decompress_raw(data: &[u8], output_size: usize) -> Result<Vec<u8>, String
                 if lz4_data.len() > 4 {
                     // Sometimes there's an additional 4-byte header
                     if let Ok(result) = lz4_flex::decompress(&lz4_data[4..], output_size) {
-                        println!("[DECOMPRESS] Successfully decompressed after skipping 4-byte header");
+                        debug_full_println!("[DECOMPRESS] Successfully decompressed after skipping 4-byte header");
                         return Ok(result);
                     }
                     
                     // Or 2-byte header
                     if let Ok(result) = lz4_flex::decompress(&lz4_data[2..], output_size) {
-                        println!("[DECOMPRESS] Successfully decompressed after skipping 2-byte header");
+                        debug_full_println!("[DECOMPRESS] Successfully decompressed after skipping 2-byte header");
                         return Ok(result);
                     }
                 }
             } else {
-                println!("[DECOMPRESS] ERROR: Not enough data! Expected {} bytes after header, but only have {}", 
+                debug_full_println!("[DECOMPRESS] ERROR: Not enough data! Expected {} bytes after header, but only have {}", 
                          compressed_size_le, data.len().saturating_sub(12));
             }
             
@@ -92,10 +93,10 @@ pub fn decompress_raw(data: &[u8], output_size: usize) -> Result<Vec<u8>, String
     
     // Check for "bv4-" marker (another Apple compression variant)  
     if data.len() > 4 && &data[0..4] == b"bv4-" {
-        println!("[DECOMPRESS] Detected Apple bv4- compression format");
+        debug_full_println!("[DECOMPRESS] Detected Apple bv4- compression format");
         if data.len() > 12 {
             if let Ok(result) = lz4_flex::decompress(&data[12..], output_size) {
-                println!("[DECOMPRESS] Successfully decompressed bv4- format");
+                debug_full_println!("[DECOMPRESS] Successfully decompressed bv4- format");
                 return Ok(result);
             }
         }
@@ -103,7 +104,7 @@ pub fn decompress_raw(data: &[u8], output_size: usize) -> Result<Vec<u8>, String
     
     // Try standard LZ4 decompression first
     if let Ok(result) = lz4_flex::decompress(data, output_size) {
-        println!("[DECOMPRESS] Successfully decompressed standard LZ4 format");
+        debug_full_println!("[DECOMPRESS] Successfully decompressed standard LZ4 format");
         return Ok(result);
     }
     
@@ -112,7 +113,7 @@ pub fn decompress_raw(data: &[u8], output_size: usize) -> Result<Vec<u8>, String
     if data.len() > 12 {
         // Try skipping first 12 bytes (possible Apple header)
         if let Ok(result) = lz4_flex::decompress(&data[12..], output_size) {
-            println!("[DECOMPRESS] Successfully decompressed with 12-byte header skip");
+            debug_full_println!("[DECOMPRESS] Successfully decompressed with 12-byte header skip");
             return Ok(result);
         }
     }
@@ -121,7 +122,7 @@ pub fn decompress_raw(data: &[u8], output_size: usize) -> Result<Vec<u8>, String
     for skip in [4, 8, 16].iter() {
         if data.len() > *skip {
             if let Ok(result) = lz4_flex::decompress(&data[*skip..], output_size) {
-                println!("[DECOMPRESS] Successfully decompressed with {}-byte header skip", skip);
+                debug_full_println!("[DECOMPRESS] Successfully decompressed with {}-byte header skip", skip);
                 return Ok(result);
             }
         }

@@ -5,7 +5,7 @@ use crate::data_structures::{
     MSG_FLAG_HAS_ORIGINAL_SENDER, MSG_FLAG_HAS_RECIPIENT_NICKNAME, MSG_FLAG_HAS_SENDER_PEER_ID,
     MSG_FLAG_HAS_MENTIONS
 };
-use crate::debug_full_println;
+use crate::{debug_full_println, debug_println};
 use crate::encryption::EncryptionService;
 
 // Remove PKCS#7 padding from data
@@ -255,7 +255,7 @@ pub fn create_encrypted_channel_message_payload(
     let encrypted_content = match encryption_service.encrypt_with_key(content.as_bytes(), channel_key) {
         Ok(encrypted) => encrypted,
         Err(e) => {
-            println!("[!] Failed to encrypt message: {:?}", e);
+            debug_println!("[!] Failed to encrypt message: {:?}", e);
             let (payload, id) = create_bitchat_message_payload_full(sender, content, Some(channel), false, "00000000");
             return (payload, id);
         }

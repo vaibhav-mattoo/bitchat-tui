@@ -9,6 +9,7 @@ use aes_gcm::{
     Aes256Gcm, Nonce,
 };
 use sha2::{Sha256, Digest};
+use crate::debug_println;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct EncryptedPassword {
@@ -68,13 +69,13 @@ pub fn load_state() -> AppState {
                 match serde_json::from_str(&contents) {
                     Ok(state) => state,
                     Err(_) => {
-                        eprintln!("Warning: Could not parse state file, using defaults");
+                        debug_println!("Warning: Could not parse state file, using defaults");
                         AppState::new()
                     }
                 }
             }
             Err(_) => {
-                eprintln!("Warning: Could not read state file, using defaults");
+                debug_println!("Warning: Could not read state file, using defaults");
                 AppState::new()
             }
         }
