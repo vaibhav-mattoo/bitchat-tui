@@ -13,6 +13,11 @@ A modern Terminal User Interface (TUI) client for BitChat, a secure, anonymous, 
 Watch bitchat-tui in action! See how easy it is to use secure, anonymous Bluetooth messaging with our intuitive terminal interface.
 
 
+
+https://github.com/user-attachments/assets/9b5ad6f4-2d90-41d4-8344-ba7c8108b2a2
+
+
+
 ### Universal Install Script
 
 The easiest way to install `bitchat-tui` on Linux, macOS, or Windows:
