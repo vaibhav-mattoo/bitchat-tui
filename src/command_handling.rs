@@ -488,6 +488,11 @@ pub async fn handle_unblock_command(
     app: &mut crate::tui::app::App,
 ) -> bool {
     if line.starts_with("/unblock ") {
+        // If there are no blocked users, show a system message
+        if blocked_peers.is_empty() {
+            app.add_log_message("system: No users are currently blocked.".to_string());
+            return true;
+        }
         let target_name = line.trim_start_matches("/unblock ").trim().trim_start_matches('@');
         let peer_id_to_unblock = peers.lock().await.iter()
             .find(|(_, peer)| peer.nickname.as_deref() == Some(target_name))
@@ -501,7 +506,6 @@ pub async fn handle_unblock_command(
                      if let Err(e) = save_state(&state_to_save) {
                         let _ = ui_tx.send(format!("Warning: Could not save state: {}\n", e)).await;
                      }
-                     
                      // Update TUI blocked list
                      let blocked_nicknames: Vec<String> = peers.lock().await.iter()
                          .filter_map(|(peer_id, peer)| {
@@ -517,10 +521,18 @@ pub async fn handle_unblock_command(
                          })
                          .collect();
                      app.update_blocked_list(blocked_nicknames);
-                     
                      let _ = ui_tx.send(format!("\n\x1b[92m✓ Unblocked {}\x1b[0m\n", target_name)).await;
+                } else {
+                    // User exists but is not blocked
+                    app.add_log_message(format!("system: User '{}' is not blocked.", target_name));
                 }
+            } else {
+                // User exists but has no fingerprint (shouldn't happen)
+                app.add_log_message(format!("system: Could not find fingerprint for user '{}'.", target_name));
             }
+        } else {
+            // User does not exist
+            app.add_log_message(format!("system: User '{}' not found.", target_name));
         }
         return true;
     }
