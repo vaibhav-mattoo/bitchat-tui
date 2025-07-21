@@ -49,24 +49,24 @@ jobs:
           target: ${{ matrix.target }}
           override: true
 
-      - name: Install dependencies (Linux)
+      - name: Install cross-compilation toolchains (Linux)
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y pkg-config
+          # Install all tools required for stripping binaries for each target architecture
+          sudo apt-get install -y pkg-config binutils-aarch64-linux-gnu binutils-arm-linux-gnueabihf musl-tools
           cargo install cross --git https://github.com/cross-rs/cross
 
       - name: Install dependencies (macOS)
         if: runner.os == 'macOS'
         run: brew install pkg-config
 
-      - name: Configure cross-rs and post-build stripping
+      - name: Configure cross-rs for Linux dependencies
         if: runner.os == 'Linux'
         run: |
           cat > Cross.toml <<'EOF'
           [target.x86_64-unknown-linux-musl]
           pre-build = ["apt-get update && apt-get install -y --no-install-recommends libdbus-1-dev"]
-          post-build = ["strip"]
           
           [target.aarch64-unknown-linux-musl]
           pre-build = [
@@ -74,7 +74,6 @@ jobs:
             "apt-get update",
             "apt-get install -y --no-install-recommends libdbus-1-dev:arm64",
           ]
-          post-build = ["strip"]
 
           [target.armv7-unknown-linux-musleabihf]
           pre-build = [
@@ -82,16 +81,29 @@ jobs:
             "apt-get update",
             "apt-get install -y --no-install-recommends libdbus-1-dev:armhf",
           ]
-          post-build = ["strip"]
           EOF
 
-      - name: Build and Strip with cross (Linux)
+      - name: Build with cross (Linux)
         if: runner.os == 'Linux'
         run: cross build --locked --release --target ${{ matrix.target }}
 
       - name: Build with cargo (non-Linux)
         if: runner.os != 'Linux'
         run: cargo build --locked --release --target ${{ matrix.target }}
+
+      - name: Strip binary (Linux x86_64-musl)
+        if: matrix.target == 'x86_64-unknown-linux-musl'
+        run: |
+          strip --strip-all "target/${{ matrix.target }}/release/${{ env.APP_NAME }}"
+
+
+      - name: Strip binary (Linux aarch64-musl)
+        if: matrix.target == 'aarch64-unknown-linux-musl'
+        run: aarch64-linux-gnu-strip "target/${{ matrix.target }}/release/${{ env.APP_NAME }}"
+
+      - name: Strip binary (Linux armv7)
+        if: matrix.target == 'armv7-unknown-linux-musleabihf'
+        run: arm-linux-gnueabihf-strip "target/${{ matrix.target }}/release/${{ env.APP_NAME }}"
 
       - name: Strip macOS binary
         if: runner.os == 'macOS'
@@ -140,5 +152,4 @@ jobs:
         uses: shogo82148/actions-upload-release-asset@v1
         with:
           upload_url: ${{ steps.get_release.outputs.upload_url }}
-          asset_path: release/${{ env.APP_NAME }}-${{ matrix.target }}.${{ matrix.ext }} # <-- This line is now fixed
-
+          asset_path: release/${{ env.APP_NAME }}-${{ matrix.target }}.${{ matrix.ext }}
