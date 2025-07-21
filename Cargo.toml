@@ -8,6 +8,8 @@ name = "bitchat-tui"
 path = "src/main.rs"
 
 [dependencies]
+dbus = { version = "0.9", features = ["vendored"] }
+libdbus-sys = { version = "0.2", features = ["vendored"] }
 ratatui = { version = "0.26.2", features = ["all-widgets"] }
 crossterm = "0.27.0"
 tui-input = "0.8.0"
