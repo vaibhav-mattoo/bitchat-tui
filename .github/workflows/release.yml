@@ -90,9 +90,14 @@ jobs:
         if: runner.os != 'Linux'
         run: cargo build --locked --release --target ${{ matrix.target }}
 
-      - name: Strip binary (Unix)
-        if: runner.os != 'Windows'
+      - name: Strip binary (Linux cross-compile)
+        if: runner.os == 'Linux'
+        run: ${{ matrix.target }}-strip "target/${{ matrix.target }}/release/${{ env.APP_NAME }}"
+
+      - name: Strip binary (macOS native)
+        if: runner.os == 'macOS'
         run: strip "target/${{ matrix.target }}/release/${{ env.APP_NAME }}"
+
 
       - name: Package binary
         shell: bash
