@@ -1,0 +1,25 @@
+[target.x86_64-unknown-linux-musl]
+pre-build = [
+  "apt-get update",
+  "apt-get install -y --no-install-recommends pkg-config libdbus-1-dev"
+]
+pkg-config = "/usr/bin/pkg-config"
+env = { PKG_CONFIG_ALLOW_CROSS = "1" }
+
+[target.aarch64-unknown-linux-musl]
+pre-build = [
+  "dpkg --add-architecture arm64",
+  "apt-get update",
+  "apt-get install -y --no-install-recommends pkg-config libdbus-1-dev:arm64"
+]
+pkg-config = "/usr/bin/pkg-config"
+env = { PKG_CONFIG_ALLOW_CROSS = "1" }
+
+[target.armv7-unknown-linux-musleabihf]
+pre-build = [
+  "dpkg --add-architecture armhf",
+  "apt-get update",
+  "apt-get install -y --no-install-recommends pkg-config libdbus-1-dev:armhf"
+]
+pkg-config = "/usr/bin/pkg-config"
+env = { PKG_CONFIG_ALLOW_CROSS = "1" }
