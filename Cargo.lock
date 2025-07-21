@@ -142,7 +142,6 @@ dependencies = [
  "futures-util",
  "hex",
  "hkdf",
- "libdbus-sys",
  "lz4_flex",
  "pbkdf2",
  "rand",

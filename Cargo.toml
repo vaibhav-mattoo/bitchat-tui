@@ -8,8 +8,7 @@ name = "bitchat-tui"
 path = "src/main.rs"
 
 [dependencies]
-dbus = { version = "0.9", features = ["vendored"] }
-libdbus-sys = { version = "0.2", features = ["vendored"] }
+# Dependencies for all platforms
 ratatui = { version = "0.26.2", features = ["all-widgets"] }
 crossterm = "0.27.0"
 tui-input = "0.8.0"
@@ -36,3 +35,7 @@ dirs = "5.0"
 x25519-dalek = { version = "2.0", features = ["static_secrets", "getrandom"] }
 ed25519-dalek = { version = "2.0", features = ["rand_core"] }
 aes-gcm = { version = "0.10", features = ["aes"] }
+
+# Platform-specific dependencies for Linux builds
+[target.'cfg(target_os = "linux")'.dependencies]
+dbus = { version = "0.9", features = ["vendored"] } 
