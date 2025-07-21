@@ -61,7 +61,7 @@ cargo install --path .
 ```
 
 > [!NOTE]
-> Building from source requires Rust to be installed on your system. This method works on Linux, macOS, and Windows.
+> Building from source requires Rust to be installed on your system. This method works on Linux, macOS, and Windows. On Windows, use WSL, Git Bash, or Cygwin for the best compatibility.
 
 
 ## 📋 Table of Contents
