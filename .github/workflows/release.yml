@@ -1,4 +1,4 @@
-name: Cross-compile and Upload Release Assets for bitchat-tui
+name: Cross-compile and Upload Bitchat-TUI Release Assets
 
 on:
   push:
@@ -10,6 +10,7 @@ permissions:
 
 env:
   CARGO_TERM_COLOR: always
+  APP_NAME: bitchat-tui
 
 jobs:
   build-and-upload:
@@ -32,43 +33,92 @@ jobs:
           - target: aarch64-apple-darwin
             os: macos-latest
             ext: tar.gz
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+            ext: zip
 
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout code at the pushed tag
         uses: actions/checkout@v4
 
-      - name: Install cross (if needed)
+      - name: Install Rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          target: ${{ matrix.target }}
+          override: true
+
+      - name: Install dependencies (Linux)
         if: runner.os == 'Linux'
         run: |
+          sudo apt-get update
+          sudo apt-get install -y pkg-config
           cargo install cross --git https://github.com/cross-rs/cross
 
-      - name: Build with cross/cargo
-        uses: houseabsolute/actions-rust-cross@v1
-        with:
-          command: build
-          target: ${{ matrix.target }}
-          args: --locked --release
-          strip: true
+      - name: Install dependencies (macOS)
+        if: runner.os == 'macOS'
+        run: brew install pkg-config
 
-      - name: Package binary (tar.gz/zip)
+      - name: Configure cross-rs for Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          cat > Cross.toml <<'EOF'
+          [target.x86_64-unknown-linux-musl]
+          pre-build = ["apt-get update && apt-get install -y --no-install-recommends libdbus-1-dev"]
+          
+          [target.aarch64-unknown-linux-musl]
+          pre-build = [
+            "dpkg --add-architecture arm64",
+            "apt-get update",
+            "apt-get install -y --no-install-recommends libdbus-1-dev:arm64",
+          ]
+
+          [target.armv7-unknown-linux-musleabihf]
+          pre-build = [
+            "dpkg --add-architecture armhf",
+            "apt-get update",
+            "apt-get install -y --no-install-recommends libdbus-1-dev:armhf",
+          ]
+          EOF
+
+      - name: Build with cross (Linux)
+        if: runner.os == 'Linux'
+        run: cross build --locked --release --target ${{ matrix.target }}
+
+      - name: Build with cargo (non-Linux)
+        if: runner.os != 'Linux'
+        run: cargo build --locked --release --target ${{ matrix.target }}
+
+      - name: Strip binary (Unix)
+        if: runner.os != 'Windows'
+        run: strip "target/${{ matrix.target }}/release/${{ env.APP_NAME }}"
+
+      - name: Package binary
         shell: bash
         run: |
           set -e
-          NAME="bitchat-tui"
           TARGET="${{ matrix.target }}"
           EXT="${{ matrix.ext }}"
           OUTDIR="release"
-          mkdir -p "$OUTDIR"
+          
+          # Determine binary name based on OS
           if [[ "$TARGET" == *windows* ]]; then
-            BIN="${NAME}.exe"
-            cp "target/${TARGET}/release/${BIN}" "${BIN}"
-            7z a -tzip "$OUTDIR/${NAME}-${TARGET}.zip" "${BIN}" LICENSE README.md || \
-              zip "$OUTDIR/${NAME}-${TARGET}.zip" "${BIN}" LICENSE README.md
+            BIN_NAME="${{ env.APP_NAME }}.exe"
           else
-            BIN="${NAME}"
-            cp "target/${TARGET}/release/${BIN}" "${BIN}"
-            tar czf "$OUTDIR/${NAME}-${TARGET}.tar.gz" "${BIN}" LICENSE README.md
+            BIN_NAME="${{ env.APP_NAME }}"
+          fi
+          
+          # Create release directory and copy binary
+          mkdir -p "$OUTDIR"
+          cp "target/${TARGET}/release/${BIN_NAME}" "${BIN_NAME}"
+          
+          # Package into tar.gz or zip
+          if [[ "$TARGET" == *windows* ]]; then
+            7z a -tzip "$OUTDIR/${{ env.APP_NAME }}-${TARGET}.zip" "${BIN_NAME}" LICENSE README.md || \
+              zip "$OUTDIR/${{ env.APP_NAME }}-${TARGET}.zip" "${BIN_NAME}" LICENSE README.md
+          else
+            tar czf "$OUTDIR/${{ env.APP_NAME }}-${TARGET}.tar.gz" "${BIN_NAME}" LICENSE README.md
           fi
 
       - name: List packaged files
@@ -87,4 +137,4 @@ jobs:
         uses: shogo82148/actions-upload-release-asset@v1
         with:
           upload_url: ${{ steps.get_release.outputs.upload_url }}
-          asset_path: release/bitchat-tui-${{ matrix.target }}.${{ matrix.ext }}
+          asset_path: release/${{ env.APP_NAME }}-${{ matrix.target }}.${{ matrix.ext }}
