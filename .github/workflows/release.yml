@@ -1,3 +1,4 @@
+
 name: Cross-compile and Upload Bitchat-TUI Release Assets
 
 on:
@@ -65,20 +66,20 @@ jobs:
         run: |
           cat > Cross.toml <<'EOF'
           [target.x86_64-unknown-linux-musl]
-          pre-build = ["apt-get update && apt-get install -y --no-install-recommends libdbus-1-dev"]
+          pre-build = ["apt-get update && apt-get install -y --no-install-recommends libdbus-1-dev pkg-config"]
           
           [target.aarch64-unknown-linux-musl]
           pre-build = [
             "dpkg --add-architecture arm64",
             "apt-get update",
-            "apt-get install -y --no-install-recommends libdbus-1-dev:arm64",
+            "apt-get install -y --no-install-recommends libdbus-1-dev:arm64 pkg-config",
           ]
 
           [target.armv7-unknown-linux-musleabihf]
           pre-build = [
             "dpkg --add-architecture armhf",
             "apt-get update",
-            "apt-get install -y --no-install-recommends libdbus-1-dev:armhf",
+            "apt-get install -y --no-install-recommends libdbus-1-dev:armhf pkg-config",
           ]
           EOF
 
