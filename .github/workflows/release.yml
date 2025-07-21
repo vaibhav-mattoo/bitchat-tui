@@ -1,3 +1,4 @@
+
 name: Cross-compile and Upload Bitchat-TUI Release Assets
 
 on:
@@ -54,7 +55,7 @@ jobs:
         run: |
           sudo apt-get update
           # Install all tools required for stripping binaries for each target architecture
-          sudo apt-get install -y pkg-config binutils-arm-linux-gnueabihf musl-tools
+          sudo apt-get install -y pkg-config binutils-aarch64-linux-gnu binutils-arm-linux-gnueabihf musl-tools
           cargo install cross --git https://github.com/cross-rs/cross
 
       - name: Install dependencies (macOS)
@@ -91,12 +92,16 @@ jobs:
         if: runner.os != 'Linux'
         run: cargo build --locked --release --target ${{ matrix.target }}
 
-      - name: Strip MUSL binaries (x86_64 & aarch64)
-        if: runner.os == 'Linux' && contains(matrix.target, '-musl') && !contains(matrix.target, 'armv7')
+      - name: Strip binary (Linux x86_64-musl)
+        if: matrix.target == 'x86_64-unknown-linux-musl'
         run: musl-strip "target/${{ matrix.target }}/release/${{ env.APP_NAME }}"
 
-      - name: Strip ARMv7 binary (Linux)
-        if: runner.os == 'Linux' && contains(matrix.target, 'armv7')
+      - name: Strip binary (Linux aarch64-musl)
+        if: matrix.target == 'aarch64-unknown-linux-musl'
+        run: aarch64-linux-gnu-strip "target/${{ matrix.target }}/release/${{ env.APP_NAME }}"
+
+      - name: Strip binary (Linux armv7)
+        if: matrix.target == 'armv7-unknown-linux-musleabihf'
         run: arm-linux-gnueabihf-strip "target/${{ matrix.target }}/release/${{ env.APP_NAME }}"
 
       - name: Strip macOS binary
@@ -147,4 +152,3 @@ jobs:
         with:
           upload_url: ${{ steps.get_release.outputs.upload_url }}
           asset_path: release/${{ env.APP_NAME }}-${{ matrix.target }}.${{ matrix.ext }}
-
