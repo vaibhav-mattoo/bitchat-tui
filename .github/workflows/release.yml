@@ -1,4 +1,3 @@
-
 name: Cross-compile and Upload Bitchat-TUI Release Assets
 
 on:
