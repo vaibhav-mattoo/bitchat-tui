@@ -135,6 +135,7 @@ dependencies = [
  "btleplug",
  "chrono",
  "crossterm",
+ "curve25519-dalek",
  "dbus",
  "dirs",
  "ed25519-dalek",
