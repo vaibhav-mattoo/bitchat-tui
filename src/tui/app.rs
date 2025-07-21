@@ -255,9 +255,18 @@ impl App {
                 
                 self.channel_messages.entry(channel.clone()).or_default().push(msg);
                 
-                let current_channel = self.get_selected_channel_name();
-                if channel != current_channel {
-                    self.add_unread_message(channel);
+                let (dm_target, channel_name) = self.current_conv.clone().unwrap_or((None, None));
+                let in_dm = dm_target.is_some();
+                if channel == "#public" {
+                    // If not currently viewing public (i.e., in DM or in another channel), add unread
+                    if !self.sidebar_state.public_selected.unwrap_or(false) {
+                        self.add_unread_message("#public".to_string());
+                    }
+                } else {
+                    // For other channels, only add unread if not currently viewing that channel
+                    if channel_name.as_deref() != Some(&channel) || in_dm {
+                        self.add_unread_message(channel);
+                    }
                 }
                 
                 self.scroll_to_bottom_current_conversation();
