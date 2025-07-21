@@ -36,7 +36,8 @@ This script will automatically detect your system and install the appropriate bi
 ```
 cargo install bitchat-tui
 ```
-
+> [!NOTE]
+> If you are on Windows and get `linker link.exe not found` or `the msvc targets depend on the msvc linker but link.exe was not found` then you need to download Microsoft Visual C++ Build Tools. Go to https://visualstudio.microsoft.com/visual-cpp-build-tools/ download the installer for your version, during installation check the box "Desktop development with C++" and reboot after the install completes.
 
 ### From Homebrew (macOS & Linux)
 
@@ -66,7 +67,7 @@ cargo install --path .
 ```
 
 > [!NOTE]
-> Building from source requires Rust to be installed on your system. This method works on Linux, macOS, and Windows. On Windows, use WSL, Git Bash, or Cygwin for the best compatibility.
+> Building from source requires Rust to be installed on your system. This method works on Linux, macOS, and Windows.
 
 
 ## 📋 Table of Contents
