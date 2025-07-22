@@ -80,15 +80,15 @@ pub async fn handle_join_command(
 ) -> bool {
     if line.starts_with("/j ") {
         let parts: Vec<&str> = line.split_whitespace().collect();
-        let channel_name = parts.get(1).unwrap_or(&"").to_string();
+        let mut channel_name = parts.get(1).unwrap_or(&"").to_string();
 
         if channel_name.is_empty() {
-            let _ = ui_tx.send("\x1b[93m⚠ Usage: /j #<channel> [password]\x1b[0m\n".to_string()).await;
+            let _ = ui_tx.send("\x1b[93m⚠ Usage: /j <channel> [password]\x1b[0m\n".to_string()).await;
             return true;
         }
+        // If channel name does not start with #, add it automatically
         if !channel_name.starts_with('#') {
-            let _ = ui_tx.send(format!("\x1b[93m⚠ Channel names must start with #\x1b[0m\n")).await;
-            return true;
+            channel_name = format!("#{}", channel_name);
         }
         
         if password_protected_channels.contains(&channel_name) && !channel_keys.contains_key(&channel_name) {

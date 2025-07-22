@@ -1,7 +1,6 @@
-
 // src/tui/event.rs
 
-use crossterm::event::{Event as CrosstermEvent, KeyCode, KeyEvent, KeyModifiers};
+use crossterm::event::{Event as CrosstermEvent, KeyCode, KeyEvent, KeyModifiers, KeyEventKind};
 use tokio::sync::mpsc;
 use tui_input::backend::crossterm::EventHandler;
 
@@ -9,6 +8,9 @@ use crate::tui::app::{App, FocusArea};
 use crate::tui::widgets::sidebar::sidebar_visible_items;
 
 pub fn handle_key_event(app: &mut App, key_event: KeyEvent, input_tx: &mpsc::Sender<String>) {
+    if key_event.kind != KeyEventKind::Press {
+        return;
+    }
     if key_event.code == KeyCode::Char('c') && key_event.modifiers == KeyModifiers::CONTROL {
         app.should_quit = true;
         return;
