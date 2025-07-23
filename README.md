@@ -6,6 +6,8 @@
 [![AUR version](https://img.shields.io/aur/version/bitchat-tui?logo=arch-linux)](https://aur.archlinux.org/packages/bitchat-tui)
 [![Homebrew Tap](https://img.shields.io/badge/homebrew-tap-brightgreen?logo=homebrew)](https://github.com/vaibhav-mattoo/homebrew-bitchat-tui)
 
+<a title="This tool is Tool of The Week on Terminal Trove, The $HOME of all things in the terminal" href="https://terminaltrove.com/"><img src="https://cdn.terminaltrove.com/media/badges/tool_of_the_week/png/terminal_trove_tool_of_the_week_gold_transparent.png" alt="Terminal Trove Tool of The Week" /></a>
+
 A modern Terminal User Interface (TUI) client for BitChat, a secure, anonymous, and peer-to-peer chat protocol that runs over Bluetooth Low Energy (BLE). Communicate completely off-grid with end-to-end encryption, public channels, and direct messaging, all from your terminal.
 
 ## 🎨 Showcase
