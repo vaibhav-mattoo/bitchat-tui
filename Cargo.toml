@@ -35,12 +35,16 @@ chrono = "0.4"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 dirs = "5.0"
+getrandom = "0.2"
+thiserror = "1.0"
 
 # For Cryptography
 x25519-dalek = { version = "2.0", features = ["static_secrets", "getrandom"] }
 ed25519-dalek = { version = "2.0", features = ["rand_core"] }
 aes-gcm = { version = "0.10", features = ["aes"] }
 curve25519-dalek = "4.1.1"
+chacha20poly1305 = "0.10"
+hmac = "0.12"
 
 # Platform-specific dependencies for Linux builds
 [target.'cfg(target_os = "linux")'.dependencies]

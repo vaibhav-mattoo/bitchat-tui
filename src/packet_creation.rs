@@ -5,6 +5,57 @@ use crate::data_structures::{
 };
 use crate::debug_full_println;
 
+// Standard block sizes for padding (matching Swift)
+const BLOCK_SIZES: [usize; 4] = [256, 512, 1024, 2048];
+
+// Find optimal block size for data (matching Swift's MessagePadding.optimalBlockSize)
+fn optimal_block_size_for_padding(data_size: usize) -> usize {
+    // Account for encryption overhead (~16 bytes for AES-GCM tag)
+    let total_size = data_size + 16;
+    
+    // Find smallest block that fits
+    for &block_size in &BLOCK_SIZES {
+        if total_size <= block_size {
+            return block_size;
+        }
+    }
+    
+    // For very large messages, just use the original size
+    // (will be fragmented anyway)
+    data_size
+}
+
+// Add PKCS#7-style padding to reach target size (matching Swift's MessagePadding.pad)
+fn pad_message_to_size(data: Vec<u8>, target_size: usize) -> Vec<u8> {
+    if data.len() >= target_size {
+        return data;
+    }
+    
+    let padding_needed = target_size - data.len();
+    
+    // PKCS#7 only supports padding up to 255 bytes
+    // If we need more padding than that, don't pad - return original data
+    if padding_needed > 255 {
+        return data;
+    }
+    
+    let mut padded = data;
+    
+    // Standard PKCS#7 padding
+    let mut random_bytes = vec![0u8; padding_needed - 1];
+    getrandom::getrandom(&mut random_bytes).unwrap_or_else(|_| {
+        // Fallback to simple random if getrandom fails
+        for byte in &mut random_bytes {
+            *byte = rand::random();
+        }
+    });
+    
+    padded.extend_from_slice(&random_bytes);
+    padded.push(padding_needed as u8);
+    
+    padded
+}
+
 pub fn create_bitchat_packet(sender_id_str: &str, msg_type: MessageType, payload: Vec<u8>) -> Vec<u8> {
     create_bitchat_packet_with_recipient(sender_id_str, None, msg_type, payload, None)
 }
@@ -147,5 +198,9 @@ pub fn create_bitchat_packet_with_recipient(sender_id_str: &str, recipient_id_st
     
     debug_full_println!("[PACKET] ==================== PACKET CREATION END ====================");
     
-    data
+    // Apply padding to standard block sizes for traffic analysis resistance (matching Swift)
+    let optimal_size = optimal_block_size_for_padding(data.len());
+    let padded_data = pad_message_to_size(data, optimal_size);
+    
+    padded_data
 }

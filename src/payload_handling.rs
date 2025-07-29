@@ -3,10 +3,11 @@ use uuid::Uuid;
 use crate::data_structures::{
     BitchatMessage, MSG_FLAG_HAS_CHANNEL, MSG_FLAG_IS_PRIVATE, MSG_FLAG_IS_ENCRYPTED,
     MSG_FLAG_HAS_ORIGINAL_SENDER, MSG_FLAG_HAS_RECIPIENT_NICKNAME, MSG_FLAG_HAS_SENDER_PEER_ID,
-    MSG_FLAG_HAS_MENTIONS
+    MSG_FLAG_HAS_MENTIONS, MSG_FLAG_IS_RELAY
 };
 use crate::{debug_full_println, debug_println};
 use crate::encryption::EncryptionService;
+
 
 // Remove PKCS#7 padding from data
 pub fn unpad_message(data: &[u8]) -> Vec<u8> {
@@ -41,18 +42,18 @@ pub fn parse_bitchat_message_payload(data: &[u8]) -> Result<BitchatMessage, &'st
     if data.len() < 1 { return Err("Payload too short for flags"); }
 
     let flags = data[offset];
-    debug_full_println!("[PARSE] Flags: 0x{:02X} (has_channel={}, is_private={}, is_encrypted={}, has_recipient_nickname={}, has_sender_peer_id={})", 
+    debug_full_println!("[PARSE] Flags: 0x{:02X} (is_relay={}, is_private={}, has_original_sender={}, has_recipient_nickname={}, has_sender_peer_id={}, has_mentions={})", 
              flags, 
-             (flags & MSG_FLAG_HAS_CHANNEL) != 0, 
+             (flags & MSG_FLAG_IS_RELAY) != 0,
              (flags & MSG_FLAG_IS_PRIVATE) != 0, 
-             (flags & MSG_FLAG_IS_ENCRYPTED) != 0,
+             (flags & MSG_FLAG_HAS_ORIGINAL_SENDER) != 0,
              (flags & MSG_FLAG_HAS_RECIPIENT_NICKNAME) != 0,
-             (flags & MSG_FLAG_HAS_SENDER_PEER_ID) != 0);
+             (flags & MSG_FLAG_HAS_SENDER_PEER_ID) != 0,
+             (flags & MSG_FLAG_HAS_MENTIONS) != 0);
 
     offset += 1;
 
-    let has_channel = (flags & MSG_FLAG_HAS_CHANNEL) != 0;
-    let is_encrypted = (flags & MSG_FLAG_IS_ENCRYPTED) != 0;
+    let _is_relay = (flags & MSG_FLAG_IS_RELAY) != 0;
     let _is_private = (flags & MSG_FLAG_IS_PRIVATE) != 0;
     let has_original_sender = (flags & MSG_FLAG_HAS_ORIGINAL_SENDER) != 0;
     let has_recipient_nickname = (flags & MSG_FLAG_HAS_RECIPIENT_NICKNAME) != 0;
@@ -83,6 +84,8 @@ pub fn parse_bitchat_message_payload(data: &[u8]) -> Result<BitchatMessage, &'st
 
     if data.len() < offset + sender_len { return Err("Payload too short for sender"); }
 
+    let sender = String::from_utf8_lossy(&data[offset..offset + sender_len]).to_string();
+
     offset += sender_len;
 
     if data.len() < offset + 2 { return Err("Payload too short for content length"); }
@@ -95,7 +98,7 @@ pub fn parse_bitchat_message_payload(data: &[u8]) -> Result<BitchatMessage, &'st
 
     if data.len() < offset + content_len { return Err("Payload too short for content"); }
 
-    let (content, encrypted_content) = if is_encrypted {
+    let (content, encrypted_content) = if (flags & MSG_FLAG_IS_ENCRYPTED) != 0 {
         // For encrypted messages, store raw bytes and empty string
         ("".to_string(), Some(data[offset..offset + content_len].to_vec()))
     } else {
@@ -132,10 +135,9 @@ pub fn parse_bitchat_message_payload(data: &[u8]) -> Result<BitchatMessage, &'st
 
     // Parse mentions array (iOS compatibility - must be in correct order)
     if has_mentions {
-        if data.len() < offset + 2 { return Err("Payload too short for mentions count"); }
-        let mentions_count_bytes: [u8; 2] = data[offset..offset+2].try_into().unwrap();
-        let mentions_count = u16::from_be_bytes(mentions_count_bytes) as usize;
-        offset += 2;
+        if data.len() < offset + 1 { return Err("Payload too short for mentions count"); }
+        let mentions_count = data[offset] as usize;
+        offset += 1;
         
         // Skip each mention
         for _ in 0..mentions_count {
@@ -149,7 +151,7 @@ pub fn parse_bitchat_message_payload(data: &[u8]) -> Result<BitchatMessage, &'st
 
     let mut channel: Option<String> = None;
 
-    if has_channel {
+    if (flags & MSG_FLAG_HAS_CHANNEL) != 0 {
 
         if data.len() < offset + 1 { return Err("Payload too short for channel length"); }
 
@@ -164,8 +166,21 @@ pub fn parse_bitchat_message_payload(data: &[u8]) -> Result<BitchatMessage, &'st
 
     }
 
-    Ok(BitchatMessage { id, content, channel, is_encrypted, encrypted_content })
+    Ok(BitchatMessage { id, sender, content, channel, is_encrypted: (flags & MSG_FLAG_IS_ENCRYPTED) != 0, encrypted_content })
 
+}
+
+// Helper function to parse message payload and return structured data
+pub fn parse_message_payload_structured(data: &[u8]) -> Result<(String, String, Option<String>, bool, String), &'static str> {
+    let message = parse_bitchat_message_payload(data)?;
+    
+    Ok((
+        message.sender,
+        message.content,
+        message.channel,
+        message.is_encrypted,
+        "unknown".to_string() // sender_peer_id
+    ))
 }
 
 pub fn create_bitchat_message_payload(sender: &str, content: &str, channel: Option<&str>) -> Vec<u8> {
@@ -186,43 +201,43 @@ pub fn create_bitchat_message_payload_full(sender: &str, content: &str, channel:
     let mut data = Vec::new();
     let mut flags: u8 = 0;
     
-    // Always set hasSenderPeerID flag since we always include it
-    flags |= MSG_FLAG_HAS_SENDER_PEER_ID;
-    
-    if channel.is_some() {
-        flags |= MSG_FLAG_HAS_CHANNEL;
-    }
-    
+    // Set flags based on message properties
     if is_private {
-        flags |= MSG_FLAG_IS_PRIVATE;  // Add private flag
-        // Private messages in Swift don't set recipient nickname in the payload
-        // The recipient is handled at the packet level
+        flags |= MSG_FLAG_IS_PRIVATE;
     }
+    
+    // Always include sender peer ID for compatibility
+    flags |= MSG_FLAG_HAS_SENDER_PEER_ID;
     
     data.push(flags);
     
+    // Timestamp (8 bytes, milliseconds)
     let timestamp_ms = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_millis() as u64;
     data.extend_from_slice(&timestamp_ms.to_be_bytes());
     
+    // ID
     let id = Uuid::new_v4().to_string();
     data.push(id.len() as u8);
     data.extend_from_slice(id.as_bytes());
     
+    // Sender
     data.push(sender.len() as u8);
     data.extend_from_slice(sender.as_bytes());
     
+    // Content
     let content_len = content.len() as u16;
     data.extend_from_slice(&content_len.to_be_bytes());
     data.extend_from_slice(content.as_bytes());
     
-    // Since we always set MSG_FLAG_HAS_SENDER_PEER_ID, we need to include it
-    data.push(sender_peer_id.len() as u8);
-    data.extend_from_slice(sender_peer_id.as_bytes());
-    
+    // Optional fields based on flags
     if let Some(channel_name) = channel {
         data.push(channel_name.len() as u8);
         data.extend_from_slice(channel_name.as_bytes());
     }
+    
+    // Sender peer ID (since we set MSG_FLAG_HAS_SENDER_PEER_ID)
+    data.push(sender_peer_id.len() as u8);
+    data.extend_from_slice(sender_peer_id.as_bytes());
     
     (data, id)
 }

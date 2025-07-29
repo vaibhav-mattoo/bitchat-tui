@@ -28,6 +28,7 @@ pub struct AppState {
     pub channel_key_commitments: HashMap<String, String>,     // bitchat.channelKeyCommitments
     pub favorites: HashSet<String>,                           // bitchat.favorites (SHA256 fingerprints)
     pub identity_key: Option<Vec<u8>>,                        // bitchat.identityKey (Ed25519 private key)
+    pub noise_static_key: Option<Vec<u8>>,                   // bitchat.noiseStaticKey (X25519 private key)
     pub encrypted_channel_passwords: HashMap<String, EncryptedPassword>, // Encrypted channel passwords
 }
 
@@ -42,6 +43,7 @@ impl AppState {
             channel_key_commitments: HashMap::new(),
             favorites: HashSet::new(),
             identity_key: None,
+            noise_static_key: None,
             encrypted_channel_passwords: HashMap::new(),
         }
     }
@@ -88,6 +90,14 @@ pub fn load_state() -> AppState {
         let signing_key = SigningKey::generate(&mut OsRng);
         state.identity_key = Some(signing_key.to_bytes().to_vec());
         // Save immediately to persist the identity key
+        let _ = save_state(&state);
+    }
+    
+    // Generate persistent Noise static key if not present (matching iOS behavior)
+    if state.noise_static_key.is_none() {
+        let noise_key = x25519_dalek::StaticSecret::random_from_rng(&mut OsRng);
+        state.noise_static_key = Some(noise_key.to_bytes().to_vec());
+        // Save immediately to persist the Noise static key
         let _ = save_state(&state);
     }
     
@@ -150,4 +160,24 @@ pub fn decrypt_password(encrypted: &EncryptedPassword, identity_key: &[u8]) -> R
     
     String::from_utf8(plaintext)
         .map_err(|e| format!("Invalid UTF-8: {}", e).into())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_persistent_noise_static_key() {
+        // Test that the same noise static key is generated and persisted
+        let state1 = load_state();
+        let state2 = load_state();
+        
+        // Both states should have the same noise static key
+        assert!(state1.noise_static_key.is_some());
+        assert!(state2.noise_static_key.is_some());
+        assert_eq!(state1.noise_static_key, state2.noise_static_key);
+        
+        // The key should be 32 bytes (X25519 private key size)
+        assert_eq!(state1.noise_static_key.unwrap().len(), 32);
+    }
 }

@@ -23,6 +23,7 @@ use crate::packet_creation::{
 use crate::packet_delivery::{create_delivery_ack, should_send_ack};
 use crate::packet_parser::{parse_bitchat_packet, generate_keys_and_payload};
 use crate::persistence::{AppState, EncryptedPassword, save_state};
+use crate::noise_session::NoiseSessionManager;
 
 // Handler for announce messages
 pub async fn handle_announce_message(
@@ -162,7 +163,19 @@ pub async fn handle_message_packet(
         if !bloom.check(&message.id) {
             bloom.set(&message.id);
 
-            let sender_nick = peers_lock.get(&packet.sender_id_str).and_then(|p| p.nickname.as_ref()).map_or(&packet.sender_id_str, |n| n);
+            // Use the sender from the parsed message instead of the peer nickname
+            let sender_nick = &message.sender;
+            
+            // Add the sender to peers list if they're not already there
+            if !peers_lock.contains_key(&packet.sender_id_str) {
+                let peer_entry = peers_lock.entry(packet.sender_id_str.clone()).or_default();
+                peer_entry.nickname = Some(sender_nick.clone());
+                if unsafe { DEBUG_LEVEL >= DebugLevel::Basic } {
+                    let _ = ui_tx.send(format!("[PEER] Discovered new peer: {} ({})\n", sender_nick, packet.sender_id_str)).await;
+                }
+                // Send connected message to TUI so it updates the people list
+                let _ = ui_tx.send(format!("{} connected\n", sender_nick)).await;
+            }
 
             if let Some(channel) = &message.channel {
                 discovered_channels.insert(channel.clone());
@@ -307,7 +320,19 @@ pub async fn handle_fragment_packet(
                     if let Ok(message) = message_result {
                         if !bloom.check(&message.id) {
                             bloom.set(&message.id);
-                            let sender_nick = peers_lock.get(&reassembled.sender_id_str).and_then(|p| p.nickname.as_ref()).map_or(&reassembled.sender_id_str, |n| n);
+                            
+                            // Add the sender to peers list if they're not already there
+                            if !peers_lock.contains_key(&reassembled.sender_id_str) {
+                                let peer_entry = peers_lock.entry(reassembled.sender_id_str.clone()).or_default();
+                                peer_entry.nickname = Some(message.sender.clone());
+                                if unsafe { DEBUG_LEVEL >= DebugLevel::Basic } {
+                                    let _ = ui_tx.send(format!("[PEER] Discovered new peer via fragment: {} ({})\n", message.sender, reassembled.sender_id_str)).await;
+                                }
+                                // Send connected message to TUI so it updates the people list
+                                let _ = ui_tx.send(format!("{} connected\n", message.sender)).await;
+                            }
+                            
+                            let sender_nick = &message.sender;
                             
                             if let Some(ch) = &message.channel {
                                 discovered_channels.insert(ch.clone());
@@ -502,5 +527,176 @@ pub async fn handle_delivery_status_request_message(_packet: &BitchatPacket, ui_
 pub async fn handle_read_receipt_message(_packet: &BitchatPacket, ui_tx: mpsc::Sender<String>) {
     if unsafe { DEBUG_LEVEL >= DebugLevel::Basic } {
         let _ = ui_tx.send("[<-- RECV] Read receipt (not implemented)\n".to_string()).await;
+    }
+}
+
+// Handler for Noise handshake initiation messages
+pub async fn handle_noise_handshake_init(
+    packet: &BitchatPacket,
+    noise_session_manager: &mut NoiseSessionManager,
+    peripheral: &Peripheral,
+    cmd_char: &btleplug::api::Characteristic,
+    my_peer_id: &str,
+    ui_tx: mpsc::Sender<String>,
+) {
+    if unsafe { DEBUG_LEVEL >= DebugLevel::Basic } {
+        let _ = ui_tx.send(format!("[NOISE] Received handshake initiation from {}\n", packet.sender_id_str)).await;
+    }
+    
+    match noise_session_manager.handle_incoming_handshake(&packet.sender_id_str, &packet.payload) {
+        Ok(Some(response)) => {
+            if unsafe { DEBUG_LEVEL >= DebugLevel::Basic } {
+                let _ = ui_tx.send(format!("[NOISE] Generated handshake response ({} bytes)\n", response.len())).await;
+            }
+            
+            // Send handshake response
+            let response_packet = create_bitchat_packet_with_recipient(
+                my_peer_id,
+                Some(&packet.sender_id_str),
+                MessageType::NoiseHandshakeResp,
+                response,
+                None
+            );
+            
+            if peripheral.write(cmd_char, &response_packet, WriteType::WithoutResponse).await.is_err() {
+                let _ = ui_tx.send("[!] Failed to send handshake response\n".to_string()).await;
+            } else {
+                if unsafe { DEBUG_LEVEL >= DebugLevel::Basic } {
+                    let _ = ui_tx.send("[NOISE] Handshake response sent successfully\n".to_string()).await;
+                }
+            }
+        },
+        Ok(None) => {
+            if unsafe { DEBUG_LEVEL >= DebugLevel::Basic } {
+                let _ = ui_tx.send("[NOISE] Handshake completed, no response needed\n".to_string()).await;
+            }
+        },
+        Err(e) => {
+            let _ = ui_tx.send(format!("[!] Handshake failed: {:?}\n", e)).await;
+        }
+    }
+}
+
+// Handler for Noise handshake response messages
+pub async fn handle_noise_handshake_resp(
+    packet: &BitchatPacket,
+    noise_session_manager: &mut NoiseSessionManager,
+    peripheral: &Peripheral,
+    cmd_char: &btleplug::api::Characteristic,
+    my_peer_id: &str,
+    ui_tx: mpsc::Sender<String>,
+) {
+    if unsafe { DEBUG_LEVEL >= DebugLevel::Basic } {
+        let _ = ui_tx.send(format!("[NOISE] Received handshake response from {}\n", packet.sender_id_str)).await;
+    }
+    
+    match noise_session_manager.handle_incoming_handshake(&packet.sender_id_str, &packet.payload) {
+        Ok(Some(_)) => {
+            if unsafe { DEBUG_LEVEL >= DebugLevel::Basic } {
+                let _ = ui_tx.send("[NOISE] Handshake response processed, session established\n".to_string()).await;
+            }
+            
+            // Send any pending messages
+            send_pending_messages(noise_session_manager, peripheral, cmd_char, my_peer_id, &packet.sender_id_str, ui_tx.clone()).await;
+        },
+        Ok(None) => {
+            if unsafe { DEBUG_LEVEL >= DebugLevel::Basic } {
+                let _ = ui_tx.send("[NOISE] Handshake completed successfully\n".to_string()).await;
+            }
+            
+            // Send any pending messages
+            send_pending_messages(noise_session_manager, peripheral, cmd_char, my_peer_id, &packet.sender_id_str, ui_tx.clone()).await;
+        },
+        Err(e) => {
+            let _ = ui_tx.send(format!("[!] Failed to process handshake response: {:?}\n", e)).await;
+        }
+    }
+}
+
+// Helper function to send pending messages after handshake completion
+async fn send_pending_messages(
+    noise_session_manager: &mut NoiseSessionManager,
+    peripheral: &Peripheral,
+    cmd_char: &btleplug::api::Characteristic,
+    my_peer_id: &str,
+    target_peer_id: &str,
+    ui_tx: mpsc::Sender<String>,
+) {
+    let pending_messages = noise_session_manager.get_pending_messages(target_peer_id);
+    
+    if !pending_messages.is_empty() {
+        if unsafe { DEBUG_LEVEL >= DebugLevel::Basic } {
+            let _ = ui_tx.send(format!("[NOISE] Sending {} pending messages to {}\n", pending_messages.len(), target_peer_id)).await;
+        }
+        
+        for message_content in pending_messages {
+            match noise_session_manager.encrypt(message_content.as_bytes(), target_peer_id) {
+                Ok(encrypted) => {
+                    // Create Noise encrypted message packet
+                    let packet = crate::packet_creation::create_bitchat_packet_with_recipient_and_signature(
+                        my_peer_id, 
+                        target_peer_id, 
+                        crate::data_structures::MessageType::NoiseEncrypted, 
+                        encrypted, 
+                        None
+                    );
+                    
+                    if crate::fragmentation::send_packet_with_fragmentation(peripheral, cmd_char, packet, my_peer_id).await.is_err() {
+                        let _ = ui_tx.send(format!("[!] Failed to send pending message to {}\n", target_peer_id)).await;
+                    }
+                },
+                Err(e) => {
+                    let _ = ui_tx.send(format!("[!] Failed to encrypt pending message: {:?}\n", e)).await;
+                }
+            }
+        }
+    }
+}
+
+// Handler for Noise encrypted messages
+pub async fn handle_noise_encrypted_message(
+    packet: &BitchatPacket,
+    noise_session_manager: &mut NoiseSessionManager,
+    peers_lock: &mut HashMap<String, Peer>,
+    ui_tx: mpsc::Sender<String>,
+) {
+    if unsafe { DEBUG_LEVEL >= DebugLevel::Basic } {
+        let _ = ui_tx.send(format!("[NOISE] Received encrypted message from {}\n", packet.sender_id_str)).await;
+        let _ = ui_tx.send(format!("[NOISE] Payload size: {} bytes\n", packet.payload.len())).await;
+    }
+    
+    match noise_session_manager.decrypt(&packet.payload, &packet.sender_id_str) {
+        Ok(decrypted) => {
+            if unsafe { DEBUG_LEVEL >= DebugLevel::Basic } {
+                let _ = ui_tx.send("[NOISE] Successfully decrypted message!\n".to_string()).await;
+                let _ = ui_tx.send(format!("[NOISE] Decrypted size: {} bytes\n", decrypted.len())).await;
+            }
+            
+            // Parse the decrypted message payload
+            match crate::payload_handling::parse_bitchat_message_payload(&decrypted) {
+                Ok(message) => {
+                    // Add the sender to peers list if they're not already there
+                    if !peers_lock.contains_key(&packet.sender_id_str) {
+                        let peer_entry = peers_lock.entry(packet.sender_id_str.clone()).or_default();
+                        peer_entry.nickname = Some(message.sender.clone());
+                        if unsafe { DEBUG_LEVEL >= DebugLevel::Basic } {
+                            let _ = ui_tx.send(format!("[PEER] Discovered new peer via Noise: {} ({})\n", message.sender, packet.sender_id_str)).await;
+                        }
+                        // Send connected message to TUI so it updates the people list
+                        let _ = ui_tx.send(format!("{} connected\n", message.sender)).await;
+                    }
+                    
+                    // Display the message using the parsed sender
+                    let _ = ui_tx.send(format!("\r\x1b[K\x1b[35m[DM from {}]\x1b[0m {}\n> ", message.sender, message.content)).await;
+                },
+                Err(e) => {
+                    let _ = ui_tx.send(format!("[!] Failed to parse decrypted message payload: {}\n", e)).await;
+                }
+            }
+        },
+        Err(e) => {
+            let _ = ui_tx.send(format!("[!] Failed to decrypt Noise message: {:?}\n", e)).await;
+            let _ = ui_tx.send(format!("[!] Make sure you have an established Noise session with {}\n", packet.sender_id_str)).await;
+        }
     }
 }

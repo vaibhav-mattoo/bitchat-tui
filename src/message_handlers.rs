@@ -1,19 +1,18 @@
 use std::collections::{HashMap, HashSet};
-use btleplug::api::{WriteType, Peripheral as _};
-use btleplug::platform::Peripheral;
+use std::error::Error;
 use tokio::sync::mpsc;
-use uuid::Uuid;
-use chrono;
-use crate::data_structures::{DeliveryTracker, MessageType, DebugLevel, DEBUG_LEVEL};
-use crate::terminal_ux::{ChatContext, format_message_display};
+use btleplug::api::{WriteType, Peripheral};
+use btleplug::platform::Peripheral as PlatformPeripheral;
+use chrono::Local;
+use crate::data_structures::{MessageType, DeliveryTracker, DebugLevel, DEBUG_LEVEL};
+use crate::fragmentation::{send_packet_with_fragmentation, should_fragment};
+use crate::noise_session::NoiseSessionManager;
 use crate::encryption::EncryptionService;
 use crate::packet_creation::{create_bitchat_packet_with_recipient_and_signature, create_bitchat_packet_with_signature};
-use crate::payload_handling::{create_bitchat_message_payload_full, create_bitchat_message_payload, create_encrypted_channel_message_payload};
-use crate::fragmentation::{send_packet_with_fragmentation, should_fragment};
-use std::error::Error;
+use crate::payload_handling::{create_bitchat_message_payload_full, create_encrypted_channel_message_payload};
+use crate::terminal_ux::{ChatContext, format_message_display};
 
-
-// Handler for private DM messages
+// Handler for private DM messages using Noise protocol
 pub async fn handle_private_dm_message(
     line: &str,
     nickname: &str,
@@ -22,16 +21,109 @@ pub async fn handle_private_dm_message(
     target_peer_id: &str,
     delivery_tracker: &mut DeliveryTracker,
     encryption_service: &EncryptionService,
-    peripheral: &Peripheral,
+    peripheral: &PlatformPeripheral,
     cmd_char: &btleplug::api::Characteristic,
     chat_context: &ChatContext,
     ui_tx: mpsc::Sender<String>,
+    noise_session_manager: &mut NoiseSessionManager,
 ) {
     if unsafe { DEBUG_LEVEL >= DebugLevel::Basic } {
         let _ = ui_tx.send(format!("{} > {}\n", chat_context.format_prompt(), line)).await;
         let _ = ui_tx.send(format!("[PRIVATE] Sending DM to {} (peer_id: {})\n", target_nickname, target_peer_id)).await;
     }
     
+    // Check if we have an established Noise session
+    if let Some(session) = noise_session_manager.get_session(target_peer_id) {
+        if session.is_established() {
+            // Use established Noise session for encryption
+            match noise_session_manager.encrypt(line.as_bytes(), target_peer_id) {
+                Ok(encrypted) => {
+                    if unsafe { DEBUG_LEVEL >= DebugLevel::Basic } {
+                        let _ = ui_tx.send(format!("[NOISE] Encrypted payload: {} bytes\n", encrypted.len())).await;
+                    }
+                    
+                    let (_message_payload, message_id) = create_bitchat_message_payload_full(nickname, line, None, true, my_peer_id);
+                    delivery_tracker.track_message(message_id.clone(), line.to_string(), true);
+                    
+                    // Create Noise encrypted message packet
+                    let packet = create_bitchat_packet_with_recipient_and_signature(
+                        my_peer_id, 
+                        target_peer_id, 
+                        MessageType::NoiseEncrypted, 
+                        encrypted, 
+                        None
+                    );
+                    
+                    if send_packet_with_fragmentation(peripheral, cmd_char, packet, my_peer_id).await.is_err() {
+                        let _ = ui_tx.send("\n\x1b[91m❌ Failed to send private message\x1b[0m\n\x1b[90mThe message could not be delivered. Connection may have been lost.\x1b[0m\n".to_string()).await;
+                    }
+                },
+                Err(e) => {
+                    let _ = ui_tx.send(format!("[!] Failed to encrypt with Noise: {:?}\n", e)).await;
+                    // Fall back to old encryption method
+                    handle_private_dm_message_fallback(
+                        line, nickname, my_peer_id, target_nickname, target_peer_id,
+                        delivery_tracker, encryption_service, peripheral, cmd_char, chat_context, ui_tx
+                    ).await;
+                }
+            }
+            return;
+        }
+    }
+    
+    // No established session, try to initiate handshake
+    match noise_session_manager.initiate_handshake(target_peer_id) {
+        Ok(handshake_message) => {
+            if unsafe { DEBUG_LEVEL >= DebugLevel::Basic } {
+                let _ = ui_tx.send(format!("[NOISE] Initiating handshake with {} ({} bytes)\n", target_nickname, handshake_message.len())).await;
+            }
+            
+            // Queue the message for later sending
+            noise_session_manager.queue_message(target_peer_id, line.to_string());
+            
+            // Send handshake message
+            let packet = create_bitchat_packet_with_recipient_and_signature(
+                my_peer_id, 
+                target_peer_id, 
+                MessageType::NoiseHandshakeInit, 
+                handshake_message, 
+                None
+            );
+            
+            if send_packet_with_fragmentation(peripheral, cmd_char, packet, my_peer_id).await.is_err() {
+                let _ = ui_tx.send("\n\x1b[91m❌ Failed to send handshake\x1b[0m\n".to_string()).await;
+                return;
+            }
+            
+            let _ = ui_tx.send(format!("[NOISE] Handshake initiated, message will be sent when connection is established\n")).await;
+        },
+        Err(e) => {
+            if unsafe { DEBUG_LEVEL >= DebugLevel::Basic } {
+                let _ = ui_tx.send(format!("[NOISE] Handshake failed: {:?}, falling back to old encryption\n", e)).await;
+            }
+            // Fall back to old encryption method
+            handle_private_dm_message_fallback(
+                line, nickname, my_peer_id, target_nickname, target_peer_id,
+                delivery_tracker, encryption_service, peripheral, cmd_char, chat_context, ui_tx
+            ).await;
+        }
+    }
+}
+
+// Fallback handler using the old encryption method
+async fn handle_private_dm_message_fallback(
+    line: &str,
+    nickname: &str,
+    my_peer_id: &str,
+    target_nickname: &str,
+    target_peer_id: &str,
+    delivery_tracker: &mut DeliveryTracker,
+    encryption_service: &EncryptionService,
+    peripheral: &PlatformPeripheral,
+    cmd_char: &btleplug::api::Characteristic,
+    chat_context: &ChatContext,
+    ui_tx: mpsc::Sender<String>,
+) {
     let (message_payload, message_id) = create_bitchat_message_payload_full(nickname, line, None, true, my_peer_id);
     delivery_tracker.track_message(message_id.clone(), line.to_string(), true);
     
@@ -79,21 +171,21 @@ pub async fn handle_regular_message(
     line: &str,
     nickname: &str,
     my_peer_id: &str,
-    chat_context: &ChatContext,
+    _chat_context: &ChatContext,
     password_protected_channels: &HashSet<String>,
     channel_keys: &mut HashMap<String, [u8; 32]>,
     encryption_service: &EncryptionService,
     delivery_tracker: &mut DeliveryTracker,
-    peripheral: &Peripheral,
+    peripheral: &PlatformPeripheral,
     cmd_char: &btleplug::api::Characteristic,
     ui_tx: mpsc::Sender<String>,
     _app: &mut crate::tui::app::App,
 ) {
     if unsafe { DEBUG_LEVEL >= DebugLevel::Basic } {
-        let _ = ui_tx.send(format!("{} > {}\n", chat_context.format_prompt(), line)).await;
+        let _ = ui_tx.send(format!("{} > {}\n", _chat_context.format_prompt(), line)).await;
     }
 
-    let current_channel = chat_context.current_mode.get_channel().map(|s| s.to_string());
+    let current_channel = _chat_context.current_mode.get_channel().map(|s| s.to_string());
     
     if let Some(ref channel) = current_channel {
         if password_protected_channels.contains(channel) && !channel_keys.contains_key(channel) {
@@ -112,10 +204,10 @@ pub async fn handle_regular_message(
             }
             create_encrypted_channel_message_payload(nickname, line, channel, channel_key, encryption_service, my_peer_id)
         } else {
-            (create_bitchat_message_payload(nickname, line, current_channel.as_deref()), Uuid::new_v4().to_string())
+            create_bitchat_message_payload_full(nickname, line, current_channel.as_deref(), false, my_peer_id)
         }
     } else {
-        (create_bitchat_message_payload(nickname, line, current_channel.as_deref()), Uuid::new_v4().to_string())
+        create_bitchat_message_payload_full(nickname, line, current_channel.as_deref(), false, my_peer_id)
     };
     
     delivery_tracker.track_message(message_id.clone(), line.to_string(), false);
@@ -154,7 +246,7 @@ pub async fn handle_regular_message(
         let _ = ui_tx.send("[MESSAGE] ==================== MESSAGE SEND COMPLETE ====================\n".to_string()).await;
     }
     
-    let timestamp = chrono::Local::now();
+    let timestamp = Local::now();
     let display = format_message_display(timestamp, nickname, line, false, current_channel.is_some(), current_channel.as_deref(), None, nickname);
     let _ = ui_tx.send(format!("\x1b[1A\r\x1b[K{}\n", display)).await;
 }

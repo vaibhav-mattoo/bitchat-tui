@@ -14,6 +14,7 @@ use crate::packet_creation::{create_bitchat_packet, create_bitchat_packet_with_r
 use crate::packet_delivery::send_channel_announce;
 use crate::payload_handling::create_bitchat_message_payload_full;
 use crate::fragmentation::send_packet_with_fragmentation;
+use crate::noise_session::NoiseSessionManager;
 
 
 
@@ -265,6 +266,7 @@ pub async fn handle_dm_command(
     cmd_char: &btleplug::api::Characteristic,
     ui_tx: mpsc::Sender<String>,
     app: &mut crate::tui::app::App,
+    _noise_session_manager: &mut NoiseSessionManager,
 ) -> bool {
     if line.starts_with("/dm ") {
         let parts: Vec<&str> = line.splitn(3, ' ').collect();

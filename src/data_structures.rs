@@ -89,6 +89,22 @@ pub enum MessageType {
     DeliveryAck = 0x0A,          // Acknowledge message received
     DeliveryStatusRequest = 0x0B,  // Request delivery status
     ReadReceipt = 0x0C,          // Message has been read
+    
+    // Noise Protocol messages
+    NoiseHandshakeInit = 0x10,   // Noise handshake initiation
+    NoiseHandshakeResp = 0x11,   // Noise handshake response
+    NoiseEncrypted = 0x12,       // Noise encrypted transport message
+    NoiseIdentityAnnounce = 0x13, // Announce static public key for discovery
+    
+    // Protocol version negotiation
+    VersionHello = 0x20,         // Initial version announcement
+    VersionAck = 0x21,           // Version acknowledgment
+    
+    // Protocol-level acknowledgments
+    ProtocolAck = 0x22,          // Generic protocol acknowledgment
+    ProtocolNack = 0x23,         // Negative acknowledgment (failure)
+    SystemValidation = 0x24,     // Session validation ping
+    HandshakeRequest = 0x25,     // Request handshake for pending messages
 }
 
 #[derive(Debug, Default, Clone)]
@@ -108,6 +124,7 @@ pub struct BitchatPacket {
 #[derive(Debug)]
 pub struct BitchatMessage { 
     pub id: String, 
+    pub sender: String,  // Add sender field
     pub content: String, 
     pub channel: Option<String>,
     pub is_encrypted: bool,
@@ -128,6 +145,115 @@ pub struct DeliveryAck {
     pub timestamp: u64,
     #[serde(rename = "hopCount")]
     pub hop_count: u8,
+}
+
+// Read receipt structure matching Swift
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct ReadReceipt {
+    #[serde(rename = "originalMessageID")]
+    pub original_message_id: String,
+    #[serde(rename = "receiptID")]
+    pub receipt_id: String,
+    #[serde(rename = "readerID")]
+    pub reader_id: String,
+    #[serde(rename = "readerNickname")]
+    pub reader_nickname: String,
+    pub timestamp: u64,
+}
+
+// Handshake request for pending messages
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct HandshakeRequest {
+    #[serde(rename = "requestID")]
+    pub request_id: String,
+    #[serde(rename = "requesterID")]
+    pub requester_id: String,
+    #[serde(rename = "requesterNickname")]
+    pub requester_nickname: String,
+    #[serde(rename = "targetID")]
+    pub target_id: String,
+    #[serde(rename = "pendingMessageCount")]
+    pub pending_message_count: u8,
+    pub timestamp: u64,
+}
+
+// Protocol-level acknowledgment
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct ProtocolAck {
+    #[serde(rename = "originalPacketID")]
+    pub original_packet_id: String,
+    #[serde(rename = "ackID")]
+    pub ack_id: String,
+    #[serde(rename = "senderID")]
+    pub sender_id: String,
+    #[serde(rename = "receiverID")]
+    pub receiver_id: String,
+    #[serde(rename = "packetType")]
+    pub packet_type: u8,
+    pub timestamp: u64,
+    #[serde(rename = "hopCount")]
+    pub hop_count: u8,
+}
+
+// Protocol-level negative acknowledgment
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct ProtocolNack {
+    #[serde(rename = "originalPacketID")]
+    pub original_packet_id: String,
+    #[serde(rename = "nackID")]
+    pub nack_id: String,
+    #[serde(rename = "senderID")]
+    pub sender_id: String,
+    #[serde(rename = "receiverID")]
+    pub receiver_id: String,
+    #[serde(rename = "packetType")]
+    pub packet_type: u8,
+    pub timestamp: u64,
+    pub reason: String,
+    #[serde(rename = "errorCode")]
+    pub error_code: u8,
+}
+
+// Version negotiation hello message
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct VersionHello {
+    #[serde(rename = "supportedVersions")]
+    pub supported_versions: Vec<u8>,
+    #[serde(rename = "preferredVersion")]
+    pub preferred_version: u8,
+    #[serde(rename = "clientVersion")]
+    pub client_version: String,
+    pub platform: String,
+    pub capabilities: Option<Vec<String>>,
+}
+
+// Version negotiation acknowledgment
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct VersionAck {
+    #[serde(rename = "agreedVersion")]
+    pub agreed_version: u8,
+    #[serde(rename = "serverVersion")]
+    pub server_version: String,
+    pub platform: String,
+    pub capabilities: Option<Vec<String>>,
+    pub rejected: bool,
+    pub reason: Option<String>,
+}
+
+// Noise identity announcement
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct NoiseIdentityAnnouncement {
+    #[serde(rename = "peerID")]
+    pub peer_id: String,
+    #[serde(rename = "publicKey")]
+    pub public_key: Vec<u8>,
+    #[serde(rename = "signingPublicKey")]
+    pub signing_public_key: Vec<u8>,
+    pub nickname: String,
+    pub timestamp: u64,
+    #[serde(rename = "previousPeerID")]
+    pub previous_peer_id: Option<String>,
+    pub signature: Vec<u8>,
 }
 
 // Track sent messages awaiting delivery confirmation
@@ -226,6 +352,27 @@ impl FragmentCollector {
         }
         
         None
+    }
+}
+
+// Protocol version constants
+pub struct ProtocolVersion;
+
+impl ProtocolVersion {
+    pub const CURRENT: u8 = 1;
+    pub const MINIMUM: u8 = 1;
+    pub const MAXIMUM: u8 = 1;
+    
+    pub fn is_supported(version: u8) -> bool {
+        version == 1
+    }
+    
+    pub fn negotiate_version(client_versions: &[u8], server_versions: &[u8]) -> Option<u8> {
+        let client_set: std::collections::HashSet<u8> = client_versions.iter().cloned().collect();
+        let server_set: std::collections::HashSet<u8> = server_versions.iter().cloned().collect();
+        let common: std::collections::HashSet<u8> = client_set.intersection(&server_set).cloned().collect();
+        
+        common.into_iter().max()
     }
 }
 

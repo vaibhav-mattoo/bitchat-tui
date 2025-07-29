@@ -8,7 +8,29 @@ use crate::compression::decompress;
 use crate::encryption::EncryptionService;
 use crate::debug_full_println;
 
+// Remove PKCS#7 padding from data (matching Swift's MessagePadding.unpad)
+fn unpad_message(data: &[u8]) -> Vec<u8> {
+    if data.is_empty() {
+        return data.to_vec();
+    }
+    
+    // Last byte tells us how much padding to remove
+    let padding_length = data[data.len() - 1] as usize;
+    
+    // Validate padding
+    if padding_length == 0 || padding_length > data.len() || padding_length > 255 {
+        return data.to_vec();
+    }
+    
+    // Remove padding
+    let unpadded_len = data.len() - padding_length;
+    data[..unpadded_len].to_vec()
+}
+
 pub fn parse_bitchat_packet(data: &[u8]) -> Result<BitchatPacket, &'static str> {
+    // Remove padding first (matching Swift's MessagePadding.unpad)
+    let unpadded_data = unpad_message(data);
+    
     // Swift BinaryProtocol format:
     // Header (Fixed 13 bytes):
     // - Version: 1 byte
@@ -23,21 +45,21 @@ pub fn parse_bitchat_packet(data: &[u8]) -> Result<BitchatPacket, &'static str> 
     const RECIPIENT_ID_SIZE: usize = 8;
     const SIGNATURE_SIZE: usize = 64;
 
-    if data.len() < HEADER_SIZE + SENDER_ID_SIZE { 
+    if unpadded_data.len() < HEADER_SIZE + SENDER_ID_SIZE { 
         return Err("Packet too small."); 
     }
 
     let mut offset = 0;
 
     // 1. Version (1 byte)
-    let version = data[offset]; 
+    let version = unpadded_data[offset]; 
     offset += 1;
-    if version != 1 { 
+    if !crate::data_structures::ProtocolVersion::is_supported(version) { 
         return Err("Unsupported version."); 
     }
 
     // 2. Type (1 byte)
-    let msg_type_raw = data[offset]; 
+    let msg_type_raw = unpadded_data[offset]; 
     offset += 1;
     let msg_type = match msg_type_raw {
         0x01 => MessageType::Announce, 
@@ -52,28 +74,45 @@ pub fn parse_bitchat_packet(data: &[u8]) -> Result<BitchatPacket, &'static str> 
         0x0A => MessageType::DeliveryAck,
         0x0B => MessageType::DeliveryStatusRequest,
         0x0C => MessageType::ReadReceipt,
+        
+        // Noise Protocol messages
+        0x10 => MessageType::NoiseHandshakeInit,
+        0x11 => MessageType::NoiseHandshakeResp,
+        0x12 => MessageType::NoiseEncrypted,
+        0x13 => MessageType::NoiseIdentityAnnounce,
+        
+        // Protocol version negotiation
+        0x20 => MessageType::VersionHello,
+        0x21 => MessageType::VersionAck,
+        
+        // Protocol-level acknowledgments
+        0x22 => MessageType::ProtocolAck,
+        0x23 => MessageType::ProtocolNack,
+        0x24 => MessageType::SystemValidation,
+        0x25 => MessageType::HandshakeRequest,
+        
         _ => return Err("Unknown message type."),
     };
 
     // 3. TTL (1 byte)
-    let ttl = data[offset]; 
+    let ttl = unpadded_data[offset]; 
     offset += 1;
     
     // 4. Timestamp (8 bytes) - we skip it for now
     offset += 8;
 
     // 5. Flags (1 byte)
-    let flags = data[offset]; 
+    let flags = unpadded_data[offset]; 
     offset += 1;
     let has_recipient = (flags & FLAG_HAS_RECIPIENT) != 0;
     let has_signature = (flags & FLAG_HAS_SIGNATURE) != 0;
     let is_compressed = (flags & FLAG_IS_COMPRESSED) != 0;
 
     // 6. Payload length (2 bytes, big-endian)
-    if data.len() < offset + 2 {
+    if unpadded_data.len() < offset + 2 {
         return Err("Packet too small for payload length.");
     }
-    let payload_len_bytes: [u8; 2] = data[offset..offset + 2].try_into().unwrap();
+    let payload_len_bytes: [u8; 2] = unpadded_data[offset..offset + 2].try_into().unwrap();
     let payload_len = u16::from_be_bytes(payload_len_bytes) as usize; 
     offset += 2;
 
@@ -86,19 +125,19 @@ pub fn parse_bitchat_packet(data: &[u8]) -> Result<BitchatPacket, &'static str> 
         expected_size += SIGNATURE_SIZE;
     }
     
-    if data.len() < expected_size { 
+    if unpadded_data.len() < expected_size { 
         return Err("Packet data shorter than expected."); 
     }
 
     // 7. Sender ID (8 bytes)
-    let sender_id = data[offset..offset + SENDER_ID_SIZE].to_vec();
+    let sender_id = unpadded_data[offset..offset + SENDER_ID_SIZE].to_vec();
     // Swift sends 8 ASCII bytes directly (e.g. "da213135")
     let sender_id_str = String::from_utf8_lossy(&sender_id).trim_end_matches('\0').to_string();
     offset += SENDER_ID_SIZE;
 
     // 8. Recipient ID (8 bytes if hasRecipient flag set)
     let (recipient_id, recipient_id_str) = if has_recipient { 
-        let recipient_id = data[offset..offset + RECIPIENT_ID_SIZE].to_vec();
+        let recipient_id = unpadded_data[offset..offset + RECIPIENT_ID_SIZE].to_vec();
         let recipient_id_str = String::from_utf8_lossy(&recipient_id).trim_end_matches('\0').to_string();
         debug_full_println!("[PACKET] Recipient ID raw bytes: {:?}", recipient_id);
         debug_full_println!("[PACKET] Recipient ID as string: '{}'", recipient_id_str);
@@ -109,7 +148,7 @@ pub fn parse_bitchat_packet(data: &[u8]) -> Result<BitchatPacket, &'static str> 
     };
 
     // 9. Payload
-    let mut payload = data[offset..offset + payload_len].to_vec();
+    let mut payload = unpadded_data[offset..offset + payload_len].to_vec();
     offset += payload_len;
     
     // 10. Signature (64 bytes if hasSignature flag set)

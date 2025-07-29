@@ -32,6 +32,10 @@ mod packet_delivery;
 mod command_handling;
 mod message_handlers;
 mod notification_handlers;
+mod binary_protocol_utils;
+mod binary_encoding;
+mod noise_protocol;
+mod noise_session;
 
 use encryption::EncryptionService;
 use terminal_ux::{ChatContext, ChatMode};
@@ -50,12 +54,15 @@ use notification_handlers::{
     handle_announce_message,
     handle_message_packet, handle_fragment_packet, handle_key_exchange_message,
     handle_leave_message, handle_channel_announce_message, handle_delivery_ack_message,
-    handle_delivery_status_request_message, handle_read_receipt_message
+    handle_delivery_status_request_message, handle_read_receipt_message,
+    handle_noise_handshake_init, handle_noise_handshake_resp, handle_noise_encrypted_message
 };
 use crate::data_structures::{
     DebugLevel, DEBUG_LEVEL, MessageType, Peer,
     DeliveryTracker, FragmentCollector, BITCHAT_SERVICE_UUID, BITCHAT_CHARACTERISTIC_UUID,
 };
+use crate::noise_session::NoiseSessionManager;
+use x25519_dalek::StaticSecret;
 
 // This function now takes a UI channel sender to direct its output.
 // It still reads from stdin directly but sends user input over its own channel.
@@ -186,6 +193,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut _favorites: Option<HashSet<String>> = None;
     let mut _identity_key: Option<Vec<u8>> = None;
     let mut create_app_state: Option<Box<dyn Fn(&HashSet<String>, &HashMap<String, String>, &Vec<String>, &HashSet<String>, &HashMap<String, String>, &HashMap<String, persistence::EncryptedPassword>, &str) -> AppState + Send + Sync>> = None;
+    let mut noise_session_manager: Option<NoiseSessionManager> = None;
 
     let mut last_tick = std::time::Instant::now();
     let tick_rate = StdDuration::from_millis(100);
@@ -257,6 +265,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 // Set up the create_app_state closure
                 let favs = _favorites.clone();
                 let id_key = _identity_key.clone();
+                let noise_static_key = app_state.as_ref().unwrap().noise_static_key.clone();
                 create_app_state = Some(Box::new(move |blocked, creators, channels, protected, commitments, encrypted_passwords, current_nickname| {
         AppState {
             nickname: Some(current_nickname.to_string()),
@@ -267,6 +276,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             channel_key_commitments: commitments.clone(),
                         favorites: favs.clone().unwrap_or_default(),
                         identity_key: id_key.clone(),
+                        noise_static_key: noise_static_key.clone(),
             encrypted_channel_passwords: encrypted_passwords.clone(),
         }
                 }));
@@ -291,6 +301,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         .collect();
                     app.update_blocked_list(blocked_nicknames);
                 }
+                // Initialize Noise session manager
+                let static_secret = if let Some(noise_key_bytes) = &app_state.as_ref().unwrap().noise_static_key {
+                    // Load persistent static key from saved state
+                    let key_array: [u8; 32] = noise_key_bytes.as_slice().try_into().unwrap();
+                    StaticSecret::from(key_array)
+                } else {
+                    // Fallback: generate new key if none exists (shouldn't happen with proper persistence)
+                    StaticSecret::random_from_rng(&mut rand::thread_rng())
+                };
+                noise_session_manager = Some(NoiseSessionManager::new(static_secret));
             }
         }
 
@@ -324,6 +344,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             MessageType::DeliveryAck => handle_delivery_ack_message(&packet, &notification.value, encryption_service.as_ref().unwrap(), delivery_tracker.as_mut().unwrap(), peripheral.as_ref().unwrap(), cmd_char.as_ref().unwrap(), &my_peer_id, ui_tx.clone()).await,
                             MessageType::DeliveryStatusRequest => handle_delivery_status_request_message(&packet, ui_tx.clone()).await,
                             MessageType::ReadReceipt => handle_read_receipt_message(&packet, ui_tx.clone()).await,
+                            MessageType::NoiseHandshakeInit => handle_noise_handshake_init(&packet, noise_session_manager.as_mut().unwrap(), peripheral.as_ref().unwrap(), cmd_char.as_ref().unwrap(), &my_peer_id, ui_tx.clone()).await,
+                            MessageType::NoiseHandshakeResp => handle_noise_handshake_resp(&packet, noise_session_manager.as_mut().unwrap(), peripheral.as_ref().unwrap(), cmd_char.as_ref().unwrap(), &my_peer_id, ui_tx.clone()).await,
+                            MessageType::NoiseEncrypted => handle_noise_encrypted_message(&packet, noise_session_manager.as_mut().unwrap(), &mut peers_lock, ui_tx.clone()).await,
                 _ => {}
             }
         },
@@ -446,6 +469,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             _favorites = None;
             _identity_key = None;
             create_app_state = None;
+            noise_session_manager = None;
             
             // Spawn new Bluetooth connection setup
             let ui_tx_clone = ui_tx.clone();
@@ -545,7 +569,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
             if handle_online_command(&line, peers.as_ref().unwrap(), ui_tx.clone()).await { continue; }
             if handle_channels_command(&line, chat_context.as_ref().unwrap(), channel_keys.as_ref().unwrap(), password_protected_channels.as_ref().unwrap(), ui_tx.clone()).await { continue; }
-            if handle_dm_command(&line, chat_context.as_mut().unwrap(), peers.as_ref().unwrap(), &nickname, &my_peer_id, delivery_tracker.as_mut().unwrap(), encryption_service.as_ref().unwrap(), peripheral.as_ref().unwrap(), cmd_char.as_ref().unwrap(), ui_tx.clone(), &mut app).await { 
+            if handle_dm_command(&line, chat_context.as_mut().unwrap(), peers.as_ref().unwrap(), &nickname, &my_peer_id, delivery_tracker.as_mut().unwrap(), encryption_service.as_ref().unwrap(), peripheral.as_ref().unwrap(), cmd_char.as_ref().unwrap(), ui_tx.clone(), &mut app, noise_session_manager.as_mut().unwrap()).await { 
                 // Update TUI to reflect DM mode if we entered DM mode
                 if let ChatMode::PrivateDM { nickname: target_nickname, .. } = &chat_context.as_ref().unwrap().current_mode {
                     app.switch_to_dm(target_nickname.clone());
@@ -608,7 +632,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
             
             if let ChatMode::PrivateDM { nickname: target_nickname, peer_id: target_peer_id } = &chat_context.as_ref().unwrap().current_mode {
-                handle_private_dm_message(&line, &nickname, &my_peer_id, target_nickname, target_peer_id, delivery_tracker.as_mut().unwrap(), encryption_service.as_ref().unwrap(), peripheral.as_ref().unwrap(), cmd_char.as_ref().unwrap(), chat_context.as_ref().unwrap(), ui_tx.clone()).await;
+                handle_private_dm_message(&line, &nickname, &my_peer_id, target_nickname, target_peer_id, delivery_tracker.as_mut().unwrap(), encryption_service.as_ref().unwrap(), peripheral.as_ref().unwrap(), cmd_char.as_ref().unwrap(), chat_context.as_ref().unwrap(), ui_tx.clone(), noise_session_manager.as_mut().unwrap()).await;
                 continue;
             }
             handle_regular_message(&line, &nickname, &my_peer_id, chat_context.as_ref().unwrap(), password_protected_channels.as_ref().unwrap(), channel_keys.as_mut().unwrap(), encryption_service.as_ref().unwrap(), delivery_tracker.as_mut().unwrap(), peripheral.as_ref().unwrap(), cmd_char.as_ref().unwrap(), ui_tx.clone(), &mut app).await;
