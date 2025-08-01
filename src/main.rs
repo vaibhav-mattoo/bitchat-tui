@@ -73,7 +73,8 @@ use notification_handlers::{
     handle_message_packet, handle_fragment_packet, handle_key_exchange_message,
     handle_leave_message, handle_channel_announce_message, handle_delivery_ack_message,
     handle_delivery_status_request_message, handle_read_receipt_message,
-    handle_noise_handshake_init, handle_noise_handshake_resp, handle_noise_encrypted_message
+    handle_noise_handshake_init, handle_noise_handshake_resp, handle_noise_encrypted_message,
+    handle_noise_identity_announce
 };
 use crate::data_structures::{
     DebugLevel, DEBUG_LEVEL, MessageType, Peer,
@@ -441,7 +442,33 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 write_debug_log(&format!("Processing NoiseEncrypted packet from peer: {}", packet.sender_id_str));
                                 write_debug_log(&format!("Packet payload length: {}", packet.payload.len()));
                                 write_debug_log(&format!("Packet first 16 bytes: {:?}", &packet.payload[..std::cmp::min(16, packet.payload.len())]));
-                                handle_noise_encrypted_message(&packet, noise_session_manager.as_mut().unwrap(), &mut peers_lock, ui_tx.clone()).await;
+                                handle_noise_encrypted_message(
+                                    &packet, 
+                                    noise_session_manager.as_mut().unwrap(), 
+                                    &mut peers_lock, 
+                                    bloom.as_mut().unwrap(), 
+                                    discovered_channels.as_mut().unwrap(), 
+                                    password_protected_channels.as_mut().unwrap(), 
+                                    channel_keys.as_mut().unwrap(), 
+                                    chat_context.as_mut().unwrap(), 
+                                    delivery_tracker.as_mut().unwrap(), 
+                                    encryption_service.as_ref().unwrap(), 
+                                    peripheral.as_ref().unwrap(), 
+                                    cmd_char.as_ref().unwrap(), 
+                                    &nickname, 
+                                    &my_peer_id, 
+                                    blocked_peers.as_ref().unwrap(), 
+                                    ui_tx.clone()
+                                ).await;
+                            }
+                            MessageType::NoiseIdentityAnnounce => {
+                                write_debug_log(&format!("Processing NoiseIdentityAnnounce from peer: {}", packet.sender_id_str));
+                                handle_noise_identity_announce(
+                                    &packet,
+                                    &mut peers_lock,
+                                    noise_session_manager.as_mut().unwrap(),
+                                    ui_tx.clone(),
+                                ).await;
                             }
                             MessageType::HandshakeRequest => {
                                 write_debug_log("Processing HandshakeRequest packet");

@@ -45,3 +45,60 @@
 [1754073328] [NOISE_DEBUG] DECRYPT_MESSAGE_ESTABLISHED - Peer: 8b7f0cb466d3f967 - Session is established, checking receive cipher
 [1754073328] [NOISE_DEBUG] DECRYPT_MESSAGE_CIPHER_FOUND - Peer: 8b7f0cb466d3f967 - Receive cipher found, decrypting message of length: 276
 [1754073328] [NOISE_DEBUG] DECRYPT_MESSAGE_SUCCESS - Peer: 8b7f0cb466d3f967 - Decryption successful, result length: 256
+[1754074022] [DEBUG] Checking if session exists for peer: 8b7f0cb466d3f967 - Result: false
+[1754074022] [DEBUG] Creating session for peer: 8b7f0cb466d3f967 with role: Responder
+[1754074022] [DEBUG] About to create new NoiseHandshakeState
+[1754074022] [DEBUG] Creating handshake state as responder
+[1754074022] [DEBUG] Handshake state created successfully
+[1754074022] [DEBUG] Session created successfully for peer: 8b7f0cb466d3f967
+[1754074022] [DEBUG] Starting handle_incoming_handshake for peer: 8b7f0cb466d3f967
+[1754074022] [NOISE_DEBUG] HANDSHAKE_PROCESS - Peer: 8b7f0cb466d3f967 - Processing message of 32 bytes, current state: Handshaking, role: Responder
+[1754074022] [NOISE_DEBUG] HANDSHAKE_READ - Peer: 8b7f0cb466d3f967 - Reading handshake message
+[1754074022] [NOISE_DEBUG] HANDSHAKE_READ_SUCCESS - Peer: 8b7f0cb466d3f967 - Successfully read handshake message
+[1754074022] [NOISE_DEBUG] HANDSHAKE_RESPONSE_NEEDED - Peer: 8b7f0cb466d3f967 - Generating handshake response
+[1754074022] [NOISE_DEBUG] HANDSHAKE_RESPONSE_CREATED - Peer: 8b7f0cb466d3f967 - Response size: 96 bytes
+[1754074023] [DEBUG] Checking if session exists for peer: 8b7f0cb466d3f967 - Result: true
+[1754074023] [DEBUG] Starting handle_incoming_handshake for peer: 8b7f0cb466d3f967
+[1754074023] [NOISE_DEBUG] HANDSHAKE_PROCESS - Peer: 8b7f0cb466d3f967 - Processing message of 64 bytes, current state: Handshaking, role: Responder
+[1754074023] [NOISE_DEBUG] HANDSHAKE_READ - Peer: 8b7f0cb466d3f967 - Reading handshake message
+[1754074023] [NOISE_DEBUG] HANDSHAKE_READ_SUCCESS - Peer: 8b7f0cb466d3f967 - Successfully read handshake message
+[1754074023] [NOISE_DEBUG] HANDSHAKE_COMPLETE - Peer: 8b7f0cb466d3f967 - Handshake is complete, getting transport ciphers
+[1754074023] [NOISE_DEBUG] HANDSHAKE_CIPHERS_SET - Peer: 8b7f0cb466d3f967 - Transport ciphers established
+[1754074023] [NOISE_DEBUG] HANDSHAKE_REMOTE_KEY - Peer: 8b7f0cb466d3f967 - Remote static key: [107, 252, 15, 51, 42, 38, 183, 114]
+[1754074023] [NOISE_DEBUG] HANDSHAKE_HASH_STORED - Peer: 8b7f0cb466d3f967 - Handshake hash: [144, 62, 154, 137, 61, 93, 232, 154, 181, 135, 33, 18, 60, 217, 185, 113]
+[1754074023] [NOISE_DEBUG] HANDSHAKE_ESTABLISHED - Peer: 8b7f0cb466d3f967 - Session established successfully
+[1754074023] [NOISE_DEBUG] FINGERPRINT_CALC - Peer: 8b7f0cb466d3f967 - Calculating fingerprint for remote static key
+[1754074023] [NOISE_DEBUG] FINGERPRINT_CALCULATED - Peer: 8b7f0cb466d3f967 - Fingerprint: 90fe2b89e22c24d6
+[1754074023] [NOISE_DEBUG] FINGERPRINT_STORED - Peer: 8b7f0cb466d3f967 - Fingerprint mappings stored
+[1754074023] [NOISE_DEBUG] CALLBACK_TRIGGERED - Peer: 8b7f0cb466d3f967 - Calling session established callback
+[1754074023] [NOISE_DEBUG] PEER_AUTH_CALLBACK - Peer: 8b7f0cb466d3f967 - Calling peer authenticated callback with fingerprint: 90fe2b89e22c24d6
+[1754074026] [NOISE_DEBUG] DECRYPT_MESSAGE_START - Peer: 8b7f0cb466d3f967 - Starting decryption for message of length: 276
+[1754074026] [NOISE_DEBUG] DECRYPT_MESSAGE_SESSIONS - Peer: 8b7f0cb466d3f967 - Found 1 total sessions
+[1754074026] [NOISE_DEBUG] DECRYPT_MESSAGE_SESSION_FOUND - Peer: 8b7f0cb466d3f967 - Session state: Established
+[1754074026] [NOISE_DEBUG] DECRYPT_MESSAGE_ESTABLISHED - Peer: 8b7f0cb466d3f967 - Session is established, checking receive cipher
+[1754074026] [NOISE_DEBUG] DECRYPT_MESSAGE_CIPHER_FOUND - Peer: 8b7f0cb466d3f967 - Receive cipher found, decrypting message of length: 276
+[1754074026] [NOISE_DEBUG] DECRYPT_MESSAGE_SUCCESS - Peer: 8b7f0cb466d3f967 - Decryption successful, result length: 256
+[1754074027] [NOISE_DEBUG] DECRYPT_MESSAGE_START - Peer: 8b7f0cb466d3f967 - Starting decryption for message of length: 276
+[1754074027] [NOISE_DEBUG] DECRYPT_MESSAGE_SESSIONS - Peer: 8b7f0cb466d3f967 - Found 1 total sessions
+[1754074027] [NOISE_DEBUG] DECRYPT_MESSAGE_SESSION_FOUND - Peer: 8b7f0cb466d3f967 - Session state: Established
+[1754074027] [NOISE_DEBUG] DECRYPT_MESSAGE_ESTABLISHED - Peer: 8b7f0cb466d3f967 - Session is established, checking receive cipher
+[1754074027] [NOISE_DEBUG] DECRYPT_MESSAGE_CIPHER_FOUND - Peer: 8b7f0cb466d3f967 - Receive cipher found, decrypting message of length: 276
+[1754074027] [NOISE_DEBUG] DECRYPT_MESSAGE_SUCCESS - Peer: 8b7f0cb466d3f967 - Decryption successful, result length: 256
+[1754074028] [NOISE_DEBUG] DECRYPT_MESSAGE_START - Peer: 8b7f0cb466d3f967 - Starting decryption for message of length: 276
+[1754074028] [NOISE_DEBUG] DECRYPT_MESSAGE_SESSIONS - Peer: 8b7f0cb466d3f967 - Found 1 total sessions
+[1754074028] [NOISE_DEBUG] DECRYPT_MESSAGE_SESSION_FOUND - Peer: 8b7f0cb466d3f967 - Session state: Established
+[1754074028] [NOISE_DEBUG] DECRYPT_MESSAGE_ESTABLISHED - Peer: 8b7f0cb466d3f967 - Session is established, checking receive cipher
+[1754074028] [NOISE_DEBUG] DECRYPT_MESSAGE_CIPHER_FOUND - Peer: 8b7f0cb466d3f967 - Receive cipher found, decrypting message of length: 276
+[1754074028] [NOISE_DEBUG] DECRYPT_MESSAGE_SUCCESS - Peer: 8b7f0cb466d3f967 - Decryption successful, result length: 256
+[1754074030] [NOISE_DEBUG] DECRYPT_MESSAGE_START - Peer: 8b7f0cb466d3f967 - Starting decryption for message of length: 276
+[1754074030] [NOISE_DEBUG] DECRYPT_MESSAGE_SESSIONS - Peer: 8b7f0cb466d3f967 - Found 1 total sessions
+[1754074030] [NOISE_DEBUG] DECRYPT_MESSAGE_SESSION_FOUND - Peer: 8b7f0cb466d3f967 - Session state: Established
+[1754074030] [NOISE_DEBUG] DECRYPT_MESSAGE_ESTABLISHED - Peer: 8b7f0cb466d3f967 - Session is established, checking receive cipher
+[1754074030] [NOISE_DEBUG] DECRYPT_MESSAGE_CIPHER_FOUND - Peer: 8b7f0cb466d3f967 - Receive cipher found, decrypting message of length: 276
+[1754074030] [NOISE_DEBUG] DECRYPT_MESSAGE_SUCCESS - Peer: 8b7f0cb466d3f967 - Decryption successful, result length: 256
+[1754074039] [NOISE_DEBUG] ENCRYPT_MESSAGE_START - Peer: 8b7f0cb466d3f967 - Starting encryption for message of length: 78
+[1754074039] [NOISE_DEBUG] ENCRYPT_MESSAGE_SESSIONS - Peer: 8b7f0cb466d3f967 - Found 1 total sessions
+[1754074039] [NOISE_DEBUG] ENCRYPT_MESSAGE_SESSION_FOUND - Peer: 8b7f0cb466d3f967 - Session state: Established
+[1754074039] [NOISE_DEBUG] ENCRYPT_MESSAGE_ESTABLISHED - Peer: 8b7f0cb466d3f967 - Session is established, checking send cipher
+[1754074039] [NOISE_DEBUG] ENCRYPT_MESSAGE_CIPHER_FOUND - Peer: 8b7f0cb466d3f967 - Send cipher found, encrypting message of length: 78
+[1754074039] [NOISE_DEBUG] ENCRYPT_MESSAGE_SUCCESS - Peer: 8b7f0cb466d3f967 - Encryption successful, result length: 98

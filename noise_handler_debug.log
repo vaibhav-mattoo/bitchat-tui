@@ -44,3 +44,86 @@
 [1754073328] [DEBUG] Successfully parsed inner packet: Message
 [1754073328] [DEBUG] Failed to parse inner message payload as UTF-8: FromUtf8Error { bytes: [26, 0, 0, 1, 152, 102, 234, 219, 229, 36, 53, 48, 56, 52, 55, 67, 52, 67, 45, 52, 54, 53, 52, 45, 52, 50, 65, 48, 45, 57, 69, 54, 66, 45, 70, 66, 70, 57, 68, 66, 49, 68, 49, 56, 53, 52, 8, 97, 110, 111, 110, 54, 51, 50, 56, 0, 2, 104, 105, 9, 97, 110, 111, 110, 121, 109, 111, 117, 115, 16, 56, 98, 55, 102, 48, 99, 98, 52, 54, 54, 100, 51, 102, 57, 54, 55], error: Utf8Error { valid_up_to: 4, error_len: Some(1) } }
 [1754073328] [DEBUG] Completed handle_noise_encrypted_message
+[1754074022] [DEBUG] Starting handle_noise_handshake_init for peer: 8b7f0cb466d3f967
+[1754074022] [DEBUG] Checking if session exists for peer: 8b7f0cb466d3f967
+[1754074022] [DEBUG] Creating new session for peer: 8b7f0cb466d3f967
+[1754074022] [DEBUG] Successfully created session for peer: 8b7f0cb466d3f967
+[1754074022] [DEBUG] About to handle incoming handshake
+[1754074022] [DEBUG] Handshake response generated, response length: 96
+[1754074022] [DEBUG] About to send handshake response
+[1754074022] [DEBUG] Successfully sent handshake response
+[1754074022] [DEBUG] Completed handle_noise_handshake_init
+[1754074023] [DEBUG] Starting handle_noise_handshake_resp for peer: 8b7f0cb466d3f967
+[1754074023] [DEBUG] Checking if session exists for peer: 8b7f0cb466d3f967
+[1754074023] [DEBUG] About to handle incoming handshake response
+[1754074023] [DEBUG] Handshake response processed, response length: 0
+[1754074023] [DEBUG] Handshake completed, no response needed
+[1754074023] [DEBUG] About to send pending messages
+[1754074023] [DEBUG] Starting send_pending_messages for peer: 8b7f0cb466d3f967
+[1754074023] [DEBUG] Found 0 pending messages for peer: 8b7f0cb466d3f967
+[1754074023] [DEBUG] No pending messages for peer: 8b7f0cb466d3f967
+[1754074023] [DEBUG] Completed send_pending_messages for peer: 8b7f0cb466d3f967
+[1754074023] [DEBUG] Completed handle_noise_handshake_resp
+[1754074023] [DEBUG] Starting handle_noise_identity_announce for peer: 8b7f0cb466d3f967
+[1754074023] [DEBUG] Failed to parse nickname from identity announce payload
+[1754074023] [DEBUG] Completed handle_noise_identity_announce
+[1754074026] [DEBUG] Starting handle_noise_encrypted_message for peer: 8b7f0cb466d3f967
+[1754074026] [DEBUG] Packet payload length: 276
+[1754074026] [DEBUG] Packet first 16 bytes: [0, 0, 0, 0, 215, 40, 81, 170, 237, 30, 225, 162, 198, 28, 178, 219]
+[1754074026] [DEBUG] Checking if session is established for peer: 8b7f0cb466d3f967
+[1754074026] [DEBUG] Session is established, about to decrypt message, payload length: 276
+[1754074026] [DEBUG] Successfully decrypted message, length: 256
+[1754074026] [DEBUG] About to parse decrypted message as BitchatPacket
+[1754074026] [DEBUG] Successfully parsed inner packet: Message
+[1754074026] [DEBUG] About to parse inner message payload
+[1754074026] [DEBUG] Successfully parsed inner message: sender=anon6328, content=hi
+[1754074026] [DEBUG] Completed handle_noise_encrypted_message
+[1754074027] [DEBUG] Starting handle_noise_encrypted_message for peer: 8b7f0cb466d3f967
+[1754074027] [DEBUG] Packet payload length: 276
+[1754074027] [DEBUG] Packet first 16 bytes: [0, 0, 0, 0, 215, 40, 81, 170, 237, 30, 225, 162, 198, 28, 178, 219]
+[1754074027] [DEBUG] Checking if session is established for peer: 8b7f0cb466d3f967
+[1754074027] [DEBUG] Session is established, about to decrypt message, payload length: 276
+[1754074027] [DEBUG] Successfully decrypted message, length: 256
+[1754074027] [DEBUG] About to parse decrypted message as BitchatPacket
+[1754074027] [DEBUG] Successfully parsed inner packet: Message
+[1754074027] [DEBUG] About to parse inner message payload
+[1754074027] [DEBUG] Successfully parsed inner message: sender=anon6328, content=hi
+[1754074027] [DEBUG] Completed handle_noise_encrypted_message
+[1754074028] [DEBUG] Starting handle_noise_encrypted_message for peer: 8b7f0cb466d3f967
+[1754074028] [DEBUG] Packet payload length: 276
+[1754074028] [DEBUG] Packet first 16 bytes: [0, 0, 0, 0, 215, 40, 81, 170, 237, 30, 225, 162, 198, 28, 178, 219]
+[1754074028] [DEBUG] Checking if session is established for peer: 8b7f0cb466d3f967
+[1754074028] [DEBUG] Session is established, about to decrypt message, payload length: 276
+[1754074028] [DEBUG] Successfully decrypted message, length: 256
+[1754074028] [DEBUG] About to parse decrypted message as BitchatPacket
+[1754074028] [DEBUG] Successfully parsed inner packet: Message
+[1754074028] [DEBUG] About to parse inner message payload
+[1754074028] [DEBUG] Successfully parsed inner message: sender=anon6328, content=hi
+[1754074028] [DEBUG] Completed handle_noise_encrypted_message
+[1754074030] [DEBUG] Starting handle_noise_encrypted_message for peer: 8b7f0cb466d3f967
+[1754074030] [DEBUG] Packet payload length: 276
+[1754074030] [DEBUG] Packet first 16 bytes: [0, 0, 0, 0, 215, 40, 81, 170, 237, 30, 225, 162, 198, 28, 178, 219]
+[1754074030] [DEBUG] Checking if session is established for peer: 8b7f0cb466d3f967
+[1754074030] [DEBUG] Session is established, about to decrypt message, payload length: 276
+[1754074030] [DEBUG] Successfully decrypted message, length: 256
+[1754074030] [DEBUG] About to parse decrypted message as BitchatPacket
+[1754074030] [DEBUG] Successfully parsed inner packet: Message
+[1754074030] [DEBUG] About to parse inner message payload
+[1754074030] [DEBUG] Successfully parsed inner message: sender=anon6328, content=hi
+[1754074030] [DEBUG] Completed handle_noise_encrypted_message
+[1754074039] [DEBUG] Starting handle_private_dm_message to peer: 8b7f0cb466d3f967
+[1754074039] [DEBUG] Checking if noise session manager exists
+[1754074039] [DEBUG] Noise session manager found
+[1754074039] [DEBUG] Checking if session is established for peer: 8b7f0cb466d3f967
+[1754074039] [DEBUG] Session is established, sending encrypted message
+[1754074039] [DEBUG] About to encrypt message
+[1754074039] [DEBUG] Creating message payload for message: 'is this working'
+[1754074039] [DEBUG] Created message payload, length: 77, message_id: 53a242c0-4836-4ed1-963b-304d576ee45d
+[1754074039] [DEBUG] Created payload with type marker, total length: 78, first byte: 0x04
+[1754074039] [DEBUG] Payload bytes: [4, 18, 0, 0, 1, 152, 102, 245, 196, 3, 36, 53, 51, 97, 50, 52, 50, 99, 48, 45, 52, 56, 51, 54, 45, 52, 101, 100, 49, 45, 57, 54]
+[1754074039] [DEBUG] About to encrypt message with Noise for peer: 8b7f0cb466d3f967
+[1754074039] [DEBUG] Message encrypted successfully, length: 98, first 16 bytes: [0, 0, 0, 0, 59, 163, 17, 38, 61, 167, 25, 149, 11, 50, 71, 8]
+[1754074039] [DEBUG] About to create encrypted message packet for peer: 8b7f0cb466d3f967
+[1754074039] [DEBUG] Created encrypted packet, length: 256, about to send via Bluetooth
+[1754074039] [DEBUG] Encrypted message sent successfully to peer: 8b7f0cb466d3f967
+[1754074039] [DEBUG] Completed handle_private_dm_message

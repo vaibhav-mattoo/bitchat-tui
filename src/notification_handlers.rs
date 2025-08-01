@@ -13,7 +13,7 @@ use std::fs::OpenOptions;
 use std::io::Write;
 
 use crate::data_structures::{
-    BitchatPacket, DebugLevel, DeliveryAck, DeliveryTracker, FragmentCollector, MessageType, Peer,
+    BitchatMessage, BitchatPacket, DebugLevel, DeliveryAck, DeliveryTracker, FragmentCollector, MessageType, Peer,
     BROADCAST_RECIPIENT, COVER_TRAFFIC_PREFIX, DEBUG_LEVEL,
 };
 use crate::encryption::EncryptionService;
@@ -1415,127 +1415,216 @@ async fn send_pending_messages(
 // Handler for Noise encrypted messages
 pub async fn handle_noise_encrypted_message(
     packet: &BitchatPacket,
-    noise_session_manager: &mut NoiseSessionManager,
+    noise_manager: &mut NoiseSessionManager,
     peers_lock: &mut HashMap<String, Peer>,
+    bloom: &mut Bloom<String>,
+    discovered_channels: &mut HashSet<String>,
+    password_protected_channels: &mut HashSet<String>,
+    channel_keys: &mut HashMap<String, [u8; 32]>,
+    chat_context: &mut ChatContext,
+    delivery_tracker: &mut DeliveryTracker,
+    encryption_service: &EncryptionService,
+    peripheral: &Peripheral,
+    cmd_char: &btleplug::api::Characteristic,
+    nickname: &str,
+    my_peer_id: &str,
+    blocked_peers: &HashSet<String>,
     ui_tx: mpsc::Sender<String>,
 ) {
-    write_noise_debug_log(&format!(
-        "[DEBUG] Starting handle_noise_encrypted_message for peer: {}",
-        packet.sender_id_str
-    ));
-    write_noise_debug_log(&format!(
-        "[DEBUG] Packet payload length: {}",
-        packet.payload.len()
-    ));
-    write_noise_debug_log(&format!(
-        "[DEBUG] Packet first 16 bytes: {:?}",
-        &packet.payload[..std::cmp::min(16, packet.payload.len())]
-    ));
+    write_noise_debug_log(&format!("[DEBUG] Starting handle_noise_encrypted_message for peer: {}", packet.sender_id_str));
+    write_noise_debug_log(&format!("[DEBUG] Packet payload length: {}", packet.payload.len()));
+    write_noise_debug_log(&format!("[DEBUG] Packet first 16 bytes: {:?}", &packet.payload[..std::cmp::min(16, packet.payload.len())]));
 
     // Check if we have an established session
-    write_noise_debug_log(&format!(
-        "[DEBUG] Checking if session is established for peer: {}",
-        packet.sender_id_str
-    ));
-    if !noise_session_manager.has_established_session(&packet.sender_id_str) {
-        write_noise_debug_log(&format!(
-            "[DEBUG] No established session for peer: {}",
-            packet.sender_id_str
-        ));
+    if !noise_manager.is_session_ready(&packet.sender_id_str) {
+        write_noise_debug_log(&format!("[DEBUG] No established session for peer: {}", packet.sender_id_str));
         return;
     }
 
-    write_noise_debug_log(&format!(
-        "[DEBUG] Session is established, about to decrypt message, payload length: {}",
-        packet.payload.len()
-    ));
+    write_noise_debug_log(&format!("[DEBUG] Checking if session is established for peer: {}", packet.sender_id_str));
+    write_noise_debug_log(&format!("[DEBUG] Session is established, about to decrypt message, payload length: {}", packet.payload.len()));
 
-    // Decrypt the message
-    match noise_session_manager.decrypt_message(&packet.sender_id_str, &packet.payload) {
-        Ok(decrypted_message) => {
-            write_noise_debug_log(&format!(
-                "[DEBUG] Successfully decrypted message, length: {}",
-                decrypted_message.len()
-            ));
-
-            // Parse the decrypted message as a BitchatPacket
+    // Decrypt the message using Noise
+    match noise_manager.decrypt_message(&packet.sender_id_str, &packet.payload) {
+        Ok(decrypted_data) => {
+            write_noise_debug_log(&format!("[DEBUG] Successfully decrypted message, length: {}", decrypted_data.len()));
+            
+            // FIXED: Parse the decrypted data as a BitchatPacket
             write_noise_debug_log("[DEBUG] About to parse decrypted message as BitchatPacket");
-            match crate::packet_parser::parse_bitchat_packet(&decrypted_message) {
+            match crate::packet_parser::parse_bitchat_packet(&decrypted_data) {
                 Ok(inner_packet) => {
-                    write_noise_debug_log(&format!(
-                        "[DEBUG] Successfully parsed inner packet: {:?}",
-                        inner_packet.msg_type
-                    ));
-
-                    // Handle the inner packet based on its type
+                    write_noise_debug_log(&format!("[DEBUG] Successfully parsed inner packet: {:?}", inner_packet.msg_type));
+                    
+                    // FIXED: Process the inner packet based on its type
                     match inner_packet.msg_type {
                         crate::data_structures::MessageType::Message => {
-                            // Extract the message text from the payload
-                            match String::from_utf8(inner_packet.payload) {
-                                Ok(message_text) => {
-                                    write_noise_debug_log(&format!(
-                                        "[DEBUG] Successfully extracted message text: '{}'",
-                                        message_text
-                                    ));
-
-                                    // Get peer nickname
-                                    let peer_nickname = peers_lock
-                                        .get(&packet.sender_id_str)
-                                        .and_then(|peer| peer.nickname.as_ref())
-                                        .unwrap_or(&packet.sender_id_str);
-
-                                    write_noise_debug_log(&format!(
-                                        "[DEBUG] Displaying message from peer: {}",
-                                        peer_nickname
-                                    ));
-
-                                    // Display the message
-                                    let _ = ui_tx
-                                        .send(format!("[DM] {}: {}\n> ", peer_nickname, message_text))
-                                        .await;
-                                }
+                            // FIXED: Parse the inner packet's payload as a BitchatMessage
+                            write_noise_debug_log("[DEBUG] About to parse inner message payload");
+                            match crate::payload_handling::parse_bitchat_message_payload(&inner_packet.payload) {
+                                Ok(message) => {
+                                    write_noise_debug_log(&format!("[DEBUG] Successfully parsed inner message: sender={}, content={}", message.sender, message.content));
+                                    
+                                    // Process the message normally (same logic as regular message handling)
+                                    handle_decrypted_message(
+                                        &inner_packet,
+                                        &message,
+                                        peers_lock,
+                                        bloom,
+                                        discovered_channels,
+                                        password_protected_channels,
+                                        channel_keys,
+                                        chat_context,
+                                        delivery_tracker,
+                                        encryption_service,
+                                        peripheral,
+                                        cmd_char,
+                                        nickname,
+                                        my_peer_id,
+                                        blocked_peers,
+                                        ui_tx.clone(),
+                                    ).await;
+                                },
                                 Err(e) => {
-                                    write_noise_debug_log(&format!(
-                                        "[DEBUG] Failed to parse inner message payload as UTF-8: {:?}",
-                                        e
-                                    ));
-                                    let _ = ui_tx
-                                        .send(format!("[!] Failed to parse inner message: {}\n> ", e))
-                                        .await;
+                                    write_noise_debug_log(&format!("[DEBUG] Failed to parse inner message payload: {:?}", e));
                                 }
                             }
-                        }
+                        },
                         _ => {
-                            write_noise_debug_log(&format!(
-                                "[DEBUG] Unsupported inner packet type: {:?}",
-                                inner_packet.msg_type
-                            ));
-                            let _ = ui_tx
-                                .send(format!("[!] Unsupported inner packet type: {:?}\n> ", inner_packet.msg_type))
-                                .await;
+                            write_noise_debug_log(&format!("[DEBUG] Unexpected inner packet type: {:?}", inner_packet.msg_type));
                         }
                     }
-                }
+                },
                 Err(e) => {
-                    write_noise_debug_log(&format!(
-                        "[DEBUG] Failed to parse decrypted message as BitchatPacket: {}",
-                        e
-                    ));
-                    let _ = ui_tx
-                        .send(format!("[!] Failed to parse decrypted message: {}\n> ", e))
-                        .await;
+                    write_noise_debug_log(&format!("[DEBUG] Failed to parse decrypted data as BitchatPacket: {:?}", e));
                 }
             }
-        }
+        },
         Err(e) => {
             write_noise_debug_log(&format!("[DEBUG] Failed to decrypt message: {:?}", e));
-            let _ = ui_tx
-                .send(format!("[!] Failed to decrypt message: {}\n> ", e))
-                .await;
         }
     }
-
+    
     write_noise_debug_log("[DEBUG] Completed handle_noise_encrypted_message");
+}
+
+// FIXED: Add helper function to process decrypted messages
+async fn handle_decrypted_message(
+    inner_packet: &BitchatPacket,
+    message: &BitchatMessage,
+    peers_lock: &mut HashMap<String, Peer>,
+    bloom: &mut Bloom<String>,
+    discovered_channels: &mut HashSet<String>,
+    password_protected_channels: &mut HashSet<String>,
+    channel_keys: &mut HashMap<String, [u8; 32]>,
+    chat_context: &mut ChatContext,
+    delivery_tracker: &mut DeliveryTracker,
+    encryption_service: &EncryptionService,
+    peripheral: &Peripheral,
+    cmd_char: &btleplug::api::Characteristic,
+    nickname: &str,
+    my_peer_id: &str,
+    blocked_peers: &HashSet<String>,
+    ui_tx: mpsc::Sender<String>,
+) {
+    if !bloom.check(&message.id) {
+        bloom.set(&message.id);
+
+        // Add the sender to peers list if not already there
+        if !peers_lock.contains_key(&inner_packet.sender_id_str) {
+            let peer_entry = peers_lock.entry(inner_packet.sender_id_str.clone()).or_default();
+            peer_entry.nickname = Some(message.sender.clone());
+            let _ = ui_tx.send(format!("{} connected\n", message.sender)).await;
+        }
+
+        // Handle channel discovery
+        if let Some(channel) = &message.channel {
+            discovered_channels.insert(channel.clone());
+            if message.is_encrypted {
+                password_protected_channels.insert(channel.clone());
+            }
+        }
+
+        // Display the message
+        let display_content = if message.is_encrypted {
+            if let Some(channel) = &message.channel {
+                channel_keys.get(channel).map_or_else(
+                    || "[Encrypted message - join channel with password]".to_string(),
+                    |key| {
+                        message.encrypted_content.as_ref().map_or_else(
+                            || "[Encrypted message - no encrypted data]".to_string(),
+                            |bytes| {
+                                encryption_service.decrypt_with_key(bytes, key).map_or_else(
+                                    |_| "[Encrypted message - decryption failed]".to_string(),
+                                    |dec| String::from_utf8_lossy(&dec).to_string(),
+                                )
+                            },
+                        )
+                    },
+                )
+            } else {
+                message.content.clone()
+            }
+        } else {
+            message.content.clone()
+        };
+
+        let timestamp = chrono::Local::now();
+        
+        // This is a private message since it was Noise-encrypted
+        chat_context.last_private_sender = Some((inner_packet.sender_id_str.clone(), message.sender.clone()));
+        chat_context.add_dm(&message.sender, &inner_packet.sender_id_str);
+
+        // Send structured message for TUI
+        let structured_msg = format!(
+            "__DM__:{}:{}:{}",
+            message.sender,
+            timestamp.format("%H%M"),
+            display_content
+        );
+        let _ = ui_tx.send(structured_msg).await;
+    }
+}
+
+// FIXED: Add NoiseIdentityAnnounce handler
+pub async fn handle_noise_identity_announce(
+    packet: &BitchatPacket,
+    peers_lock: &mut HashMap<String, Peer>,
+    noise_manager: &mut NoiseSessionManager,
+    ui_tx: mpsc::Sender<String>,
+) {
+    write_noise_debug_log(&format!("[DEBUG] Starting handle_noise_identity_announce for peer: {}", packet.sender_id_str));
+    
+    // Parse the identity announce payload
+    if packet.payload.len() >= 72 { // 32 bytes static key + 32 bytes identity hash + 8 bytes nickname length prefix
+        let static_key_bytes = &packet.payload[0..32];
+        let identity_hash = &packet.payload[32..64];
+        let nickname_data = &packet.payload[64..];
+        
+        if let Ok(nickname) = String::from_utf8(nickname_data.to_vec()) {
+            let nickname = nickname.trim_end_matches('\0'); // Remove null padding
+            
+            write_noise_debug_log(&format!("[DEBUG] Parsed identity announce - nickname: {}, static key: {:?}", nickname, &static_key_bytes[..8]));
+            
+            // Update peer info
+            let peer_entry = peers_lock.entry(packet.sender_id_str.clone()).or_default();
+            peer_entry.nickname = Some(nickname.to_string());
+            
+            // Store the static key for potential future handshakes
+            if let Err(e) = noise_manager.store_peer_static_key(&packet.sender_id_str, static_key_bytes) {
+                write_noise_debug_log(&format!("[DEBUG] Failed to store peer static key: {:?}", e));
+            } else {
+                write_noise_debug_log(&format!("[DEBUG] Stored static key for peer: {}", packet.sender_id_str));
+            }
+            
+            let _ = ui_tx.send(format!("[IDENTITY] Peer {} announced identity with nickname: {}\n", packet.sender_id_str, nickname)).await;
+        } else {
+            write_noise_debug_log(&format!("[DEBUG] Failed to parse nickname from identity announce payload"));
+        }
+    } else {
+        write_noise_debug_log(&format!("[DEBUG] Identity announce payload too short: {} bytes", packet.payload.len()));
+    }
+    
+    write_noise_debug_log("[DEBUG] Completed handle_noise_identity_announce");
 }
 
 /// Send a handshake request to a target peer (matches Swift sendHandshakeRequest)
