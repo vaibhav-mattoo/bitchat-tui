@@ -117,32 +117,51 @@ impl HandshakeRequest {
     pub fn to_binary_data(&self) -> Vec<u8> {
         let mut data = Vec::new();
         
+        // UUID (16 bytes)
         data.append_uuid(&self.request_id);
         
-        // RequesterID as 8-byte hex string
-        let requester_data = hex_decode(&self.requester_id).unwrap_or_else(|| vec![0u8; 8]);
-        let mut requester_bytes = requester_data;
-        while requester_bytes.len() < 8 {
-            requester_bytes.push(0);
+        // RequesterID as 8-byte hex string (matches Swift implementation)
+        let mut requester_data = Vec::new();
+        let mut temp_id = self.requester_id.clone();
+        while temp_id.len() >= 2 && requester_data.len() < 8 {
+            if let Ok(byte) = u8::from_str_radix(&temp_id[..2], 16) {
+                requester_data.push(byte);
+            }
+            temp_id = temp_id[2..].to_string();
         }
-        data.extend_from_slice(&requester_bytes[..8]);
-        
-        // TargetID as 8-byte hex string
-        let target_data = hex_decode(&self.target_id).unwrap_or_else(|| vec![0u8; 8]);
-        let mut target_bytes = target_data;
-        while target_bytes.len() < 8 {
-            target_bytes.push(0);
+        while requester_data.len() < 8 {
+            requester_data.push(0);
         }
-        data.extend_from_slice(&target_bytes[..8]);
+        data.extend_from_slice(&requester_data);
         
+        // TargetID as 8-byte hex string (matches Swift implementation)
+        let mut target_data = Vec::new();
+        let mut temp_id = self.target_id.clone();
+        while temp_id.len() >= 2 && target_data.len() < 8 {
+            if let Ok(byte) = u8::from_str_radix(&temp_id[..2], 16) {
+                target_data.push(byte);
+            }
+            temp_id = temp_id[2..].to_string();
+        }
+        while target_data.len() < 8 {
+            target_data.push(0);
+        }
+        data.extend_from_slice(&target_data);
+        
+        // Pending message count (1 byte)
         data.append_u8(self.pending_message_count);
+        
+        // Timestamp (8 bytes)
         data.append_date(self.timestamp);
+        
+        // Requester nickname (variable length)
         data.append_string(&self.requester_nickname, None);
         
         data
     }
     
     pub fn from_binary_data(data: &[u8]) -> Option<Self> {
+        // Create defensive copy (matches Swift implementation)
         let data_copy = data.to_vec();
         
         // Minimum size: UUID (16) + requesterID (8) + targetID (8) + count (1) + timestamp (8) + min nickname
@@ -152,26 +171,35 @@ impl HandshakeRequest {
         
         let mut offset = 0;
         
+        // UUID (16 bytes)
         let request_id = data_copy.read_uuid(&mut offset)?;
         
+        // RequesterID (8 bytes)
         let requester_id_data = data_copy.read_fixed_bytes(&mut offset, 8)?;
         let requester_id = hex_encode(&requester_id_data);
         
+        // TargetID (8 bytes)
         let target_id_data = data_copy.read_fixed_bytes(&mut offset, 8)?;
         let target_id = hex_encode(&target_id_data);
         
+        // Pending message count (1 byte)
         let pending_message_count = data_copy.read_u8(&mut offset)?;
+        
+        // Timestamp (8 bytes)
         let timestamp = data_copy.read_date(&mut offset)?;
+        
+        // Requester nickname (variable length)
         let requester_nickname = data_copy.read_string(&mut offset, None)?;
         
-        Some(HandshakeRequest {
+        // Use the private constructor (matches Swift implementation)
+        Some(HandshakeRequest::from_parts(
             request_id,
             requester_id,
             requester_nickname,
             target_id,
             pending_message_count,
             timestamp,
-        })
+        ))
     }
 }
 

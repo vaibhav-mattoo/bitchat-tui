@@ -5,7 +5,7 @@ use tokio::sync::mpsc;
 use tokio::time::{self, Duration};
 use futures::stream::StreamExt;
 use std::collections::{HashMap, HashSet};
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 use tokio::sync::Mutex;
 
 use bloomfilter::Bloom;
@@ -18,6 +18,24 @@ use tui::event;
 use crossterm::event as crossterm_event;
 use crossterm::event::Event as CrosstermEvent;
 use std::time::Duration as StdDuration;
+
+
+
+// Debug logging function
+fn write_debug_log(message: &str) {
+    if let Ok(mut file) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open("debug.log")
+    {
+        let timestamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        let log_entry = format!("[{}] {}\n", timestamp, message);
+        let _ = std::io::Write::write_all(&mut file, log_entry.as_bytes());
+    }
+}
 
 mod compression;
 mod fragmentation;
@@ -47,7 +65,7 @@ use command_handling::{
     handle_join_command, handle_exit_command, handle_reply_command, handle_public_command,
     handle_online_command, handle_channels_command, handle_dm_command, handle_block_command,
     handle_unblock_command, handle_clear_command, handle_leave_command,
-    handle_pass_command, handle_transfer_command
+    handle_pass_command, handle_transfer_command, handle_fingerprint_command
 };
 use message_handlers::{handle_private_dm_message, handle_regular_message};
 use notification_handlers::{
@@ -63,6 +81,7 @@ use crate::data_structures::{
 };
 use crate::noise_session::NoiseSessionManager;
 use x25519_dalek::StaticSecret;
+use crate::notification_handlers::{handle_handshake_request_message};
 
 // This function now takes a UI channel sender to direct its output.
 // It still reads from stdin directly but sends user input over its own channel.
@@ -303,14 +322,42 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
                 // Initialize Noise session manager
                 let static_secret = if let Some(noise_key_bytes) = &app_state.as_ref().unwrap().noise_static_key {
-                    // Load persistent static key from saved state
                     let key_array: [u8; 32] = noise_key_bytes.as_slice().try_into().unwrap();
                     StaticSecret::from(key_array)
                 } else {
-                    // Fallback: generate new key if none exists (shouldn't happen with proper persistence)
                     StaticSecret::random_from_rng(&mut rand::thread_rng())
                 };
-                noise_session_manager = Some(NoiseSessionManager::new(static_secret));
+                
+                let mut temp_noise_session_manager = NoiseSessionManager::new(static_secret);
+                
+                // Set up session callbacks (matching Swift implementation)
+                temp_noise_session_manager.set_on_session_established(|peer_id, remote_static_key| {
+                    debug_full_println!("[NOISE] Session established with {} (remote key: {:?})", peer_id, &remote_static_key.to_bytes()[..8]);
+                });
+                
+                temp_noise_session_manager.set_on_session_failed(|peer_id, error| {
+                    debug_full_println!("[NOISE] Session failed with {}: {:?}", peer_id, error);
+                });
+
+                // Set up peer authentication callback (matching Swift implementation)
+                temp_noise_session_manager.set_on_peer_authenticated(|peer_id, fingerprint| {
+                    debug_full_println!("[NOISE] Peer authenticated: {} (fingerprint: {})", peer_id, &fingerprint[..16]);
+                    // TODO: Update UI encryption status here
+                });
+
+                // Set up handshake required callback (matching Swift implementation)
+                temp_noise_session_manager.set_on_handshake_required(|peer_id| {
+                    debug_full_println!("[NOISE] Handshake required for peer: {}", peer_id);
+                    // TODO: Update UI encryption status here
+                });
+                
+                noise_session_manager = Some(temp_noise_session_manager);
+                
+                // Set the noise session manager in the encryption service
+                if let Some(encryption_service) = &mut encryption_service {
+                    // We can't clone NoiseSessionManager, so we'll set it up later
+                    // The encryption service will be updated when needed
+                }
             }
         }
 
@@ -319,16 +366,45 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             if let Ok(Some(notification)) = tokio::time::timeout(std::time::Duration::from_millis(1), notification_stream.next()).await {
                 let mut peers_lock = peers.as_ref().unwrap().lock().await;
                 let ui_tx = ui_tx.clone();
-    match parse_bitchat_packet(&notification.value) {
-        Ok(packet) => {
-            if packet.sender_id_str == my_peer_id { continue; }
-            match packet.msg_type {
-                            MessageType::Announce => handle_announce_message(&packet, &mut peers_lock, ui_tx.clone()).await,
-                            MessageType::Message => handle_message_packet(&packet, &notification.value, &mut peers_lock, bloom.as_mut().unwrap(), discovered_channels.as_mut().unwrap(), password_protected_channels.as_mut().unwrap(), channel_keys.as_mut().unwrap(), chat_context.as_mut().unwrap(), delivery_tracker.as_mut().unwrap(), encryption_service.as_ref().unwrap(), peripheral.as_ref().unwrap(), cmd_char.as_ref().unwrap(), &nickname, &my_peer_id, blocked_peers.as_ref().unwrap(), ui_tx.clone()).await,
-                            MessageType::FragmentStart | MessageType::FragmentContinue | MessageType::FragmentEnd => handle_fragment_packet(&packet, &notification.value, fragment_collector.as_mut().unwrap(), &mut peers_lock, bloom.as_mut().unwrap(), discovered_channels.as_mut().unwrap(), password_protected_channels.as_mut().unwrap(), chat_context.as_mut().unwrap(), encryption_service.as_ref().unwrap(), peripheral.as_ref().unwrap(), cmd_char.as_ref().unwrap(), &nickname, &my_peer_id, blocked_peers.as_ref().unwrap(), ui_tx.clone()).await,
-                            MessageType::KeyExchange => handle_key_exchange_message(&packet, &mut peers_lock, encryption_service.as_ref().unwrap(), peripheral.as_ref().unwrap(), cmd_char.as_ref().unwrap(), &my_peer_id, ui_tx.clone()).await,
-                            MessageType::Leave => handle_leave_message(&packet, &mut peers_lock, chat_context.as_ref().unwrap(), ui_tx.clone()).await,
+                
+                // Process notification
+                write_debug_log(&format!("Processing notification from characteristic"));
+                write_debug_log(&format!("Raw notification data: {} bytes", notification.value.len()));
+                
+                // Log the raw bytes for debugging
+                write_debug_log(&format!("Raw bytes: {:?}", notification.value));
+                
+                match parse_bitchat_packet(&notification.value) {
+                    Ok(packet) => {
+                        if packet.sender_id_str == my_peer_id { continue; }
+                        
+                        write_debug_log(&format!("Successfully parsed packet: type={:?}, sender_id='{}', recipient_id='{:?}'", 
+                            packet.msg_type, packet.sender_id_str, packet.recipient_id_str));
+                        
+                        // Handle different packet types
+                        match packet.msg_type {
+                            MessageType::Announce => {
+                                write_debug_log("Processing Announce packet");
+                                handle_announce_message(&packet, &mut peers_lock, ui_tx.clone()).await;
+                            }
+                            MessageType::Message => {
+                                write_debug_log("Processing Message packet");
+                                handle_message_packet(&packet, &notification.value, &mut peers_lock, bloom.as_mut().unwrap(), discovered_channels.as_mut().unwrap(), password_protected_channels.as_mut().unwrap(), channel_keys.as_mut().unwrap(), chat_context.as_mut().unwrap(), delivery_tracker.as_mut().unwrap(), encryption_service.as_ref().unwrap(), noise_session_manager.as_mut().unwrap(), peripheral.as_ref().unwrap(), cmd_char.as_ref().unwrap(), &nickname, &my_peer_id, blocked_peers.as_ref().unwrap(), ui_tx.clone()).await;
+                            }
+                            MessageType::FragmentStart | MessageType::FragmentContinue | MessageType::FragmentEnd => {
+                                write_debug_log("Processing Fragment packet");
+                                handle_fragment_packet(&packet, &notification.value, fragment_collector.as_mut().unwrap(), &mut peers_lock, bloom.as_mut().unwrap(), discovered_channels.as_mut().unwrap(), password_protected_channels.as_mut().unwrap(), chat_context.as_mut().unwrap(), encryption_service.as_ref().unwrap(), peripheral.as_ref().unwrap(), cmd_char.as_ref().unwrap(), &nickname, &my_peer_id, blocked_peers.as_ref().unwrap(), ui_tx.clone()).await;
+                            }
+                            MessageType::KeyExchange => {
+                                write_debug_log("Processing KeyExchange packet");
+                                handle_key_exchange_message(&packet, &mut peers_lock, encryption_service.as_ref().unwrap(), peripheral.as_ref().unwrap(), cmd_char.as_ref().unwrap(), &my_peer_id, ui_tx.clone()).await;
+                            }
+                            MessageType::Leave => {
+                                write_debug_log("Processing Leave packet");
+                                handle_leave_message(&packet, &mut peers_lock, chat_context.as_ref().unwrap(), ui_tx.clone()).await;
+                            }
                             MessageType::ChannelAnnounce => {
+                                write_debug_log("Processing ChannelAnnounce packet");
                                 // Get the channel name from the packet payload
                                 let payload_str = String::from_utf8_lossy(&packet.payload);
                                 let parts: Vec<&str> = payload_str.split('|').collect();
@@ -339,19 +415,47 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                         app.channels.push(channel_name.clone());
                                     }
                                 }
-                                handle_channel_announce_message(&packet, channel_creators.as_mut().unwrap(), password_protected_channels.as_mut().unwrap(), channel_keys.as_mut().unwrap(), channel_key_commitments.as_mut().unwrap(), chat_context.as_mut().unwrap(), blocked_peers.as_ref().unwrap(), &app_state.as_ref().unwrap().encrypted_channel_passwords, &nickname, create_app_state.as_ref().unwrap().as_ref(), ui_tx.clone()).await
-                            },
-                            MessageType::DeliveryAck => handle_delivery_ack_message(&packet, &notification.value, encryption_service.as_ref().unwrap(), delivery_tracker.as_mut().unwrap(), peripheral.as_ref().unwrap(), cmd_char.as_ref().unwrap(), &my_peer_id, ui_tx.clone()).await,
-                            MessageType::DeliveryStatusRequest => handle_delivery_status_request_message(&packet, ui_tx.clone()).await,
-                            MessageType::ReadReceipt => handle_read_receipt_message(&packet, ui_tx.clone()).await,
-                            MessageType::NoiseHandshakeInit => handle_noise_handshake_init(&packet, noise_session_manager.as_mut().unwrap(), peripheral.as_ref().unwrap(), cmd_char.as_ref().unwrap(), &my_peer_id, ui_tx.clone()).await,
-                            MessageType::NoiseHandshakeResp => handle_noise_handshake_resp(&packet, noise_session_manager.as_mut().unwrap(), peripheral.as_ref().unwrap(), cmd_char.as_ref().unwrap(), &my_peer_id, ui_tx.clone()).await,
-                            MessageType::NoiseEncrypted => handle_noise_encrypted_message(&packet, noise_session_manager.as_mut().unwrap(), &mut peers_lock, ui_tx.clone()).await,
-                _ => {}
-            }
-        },
-        Err(_e) => { /* Silently ignore unparseable packets */ }
-    }
+                                handle_channel_announce_message(&packet, channel_creators.as_mut().unwrap(), password_protected_channels.as_mut().unwrap(), channel_keys.as_mut().unwrap(), channel_key_commitments.as_mut().unwrap(), chat_context.as_mut().unwrap(), blocked_peers.as_ref().unwrap(), &app_state.as_ref().unwrap().encrypted_channel_passwords, &nickname, create_app_state.as_ref().unwrap().as_ref(), ui_tx.clone()).await;
+                            }
+                            MessageType::DeliveryAck => {
+                                write_debug_log("Processing DeliveryAck packet");
+                                handle_delivery_ack_message(&packet, &notification.value, encryption_service.as_ref().unwrap(), delivery_tracker.as_mut().unwrap(), peripheral.as_ref().unwrap(), cmd_char.as_ref().unwrap(), &my_peer_id, ui_tx.clone()).await;
+                            }
+                            MessageType::DeliveryStatusRequest => {
+                                write_debug_log("Processing DeliveryStatusRequest packet");
+                                handle_delivery_status_request_message(&packet, ui_tx.clone()).await;
+                            }
+                            MessageType::ReadReceipt => {
+                                write_debug_log("Processing ReadReceipt packet");
+                                handle_read_receipt_message(&packet, ui_tx.clone()).await;
+                            }
+                            MessageType::NoiseHandshakeInit => {
+                                write_debug_log("Processing NoiseHandshakeInit packet");
+                                handle_noise_handshake_init(&packet, noise_session_manager.as_mut().unwrap(), peripheral.as_ref().unwrap(), cmd_char.as_ref().unwrap(), &my_peer_id, ui_tx.clone()).await;
+                            }
+                            MessageType::NoiseHandshakeResp => {
+                                write_debug_log("Processing NoiseHandshakeResp packet");
+                                handle_noise_handshake_resp(&packet, noise_session_manager.as_mut().unwrap(), peripheral.as_ref().unwrap(), cmd_char.as_ref().unwrap(), &my_peer_id, ui_tx.clone()).await;
+                            }
+                            MessageType::NoiseEncrypted => {
+                                write_debug_log(&format!("Processing NoiseEncrypted packet from peer: {}", packet.sender_id_str));
+                                write_debug_log(&format!("Packet payload length: {}", packet.payload.len()));
+                                write_debug_log(&format!("Packet first 16 bytes: {:?}", &packet.payload[..std::cmp::min(16, packet.payload.len())]));
+                                handle_noise_encrypted_message(&packet, noise_session_manager.as_mut().unwrap(), &mut peers_lock, ui_tx.clone()).await;
+                            }
+                            MessageType::HandshakeRequest => {
+                                write_debug_log("Processing HandshakeRequest packet");
+                                handle_handshake_request_message(&packet, noise_session_manager.as_mut().unwrap(), peripheral.as_ref().unwrap(), cmd_char.as_ref().unwrap(), &my_peer_id, ui_tx.clone()).await;
+                            }
+                            _ => {
+                                write_debug_log(&format!("Ignoring unknown packet type: {:?}", packet.msg_type));
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        write_debug_log(&format!("Failed to parse packet: {}", e));
+                    }
+                }
             }
         }
 
@@ -618,6 +722,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 continue; 
             }
             if handle_transfer_command(&line, chat_context.as_ref().unwrap(), channel_creators.as_mut().unwrap(), password_protected_channels.as_ref().unwrap(), channel_keys.as_ref().unwrap(), &my_peer_id, peers.as_ref().unwrap(), peripheral.as_ref().unwrap(), cmd_char.as_ref().unwrap(), ui_tx.clone()).await { continue; }
+            if handle_fingerprint_command(&line, encryption_service.as_ref().unwrap(), ui_tx.clone()).await { continue; }
             if line.starts_with("/") {
                 let unknown_cmd = line.split_whitespace().next().unwrap_or("");
                 let unknown_cmd_msg = format!("⚠  Unknown command: {}", unknown_cmd);
@@ -632,7 +737,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
             
             if let ChatMode::PrivateDM { nickname: target_nickname, peer_id: target_peer_id } = &chat_context.as_ref().unwrap().current_mode {
-                handle_private_dm_message(&line, &nickname, &my_peer_id, target_nickname, target_peer_id, delivery_tracker.as_mut().unwrap(), encryption_service.as_ref().unwrap(), peripheral.as_ref().unwrap(), cmd_char.as_ref().unwrap(), chat_context.as_ref().unwrap(), ui_tx.clone(), noise_session_manager.as_mut().unwrap()).await;
+                if let Err(e) = handle_private_dm_message(&line, target_peer_id, &mut noise_session_manager, peripheral.as_ref().unwrap(), cmd_char.as_ref().unwrap(), &my_peer_id, ui_tx.clone()).await {
+                    app.add_log_message(format!("system: Failed to send DM: {}", e));
+                }
                 continue;
             }
             handle_regular_message(&line, &nickname, &my_peer_id, chat_context.as_ref().unwrap(), password_protected_channels.as_ref().unwrap(), channel_keys.as_mut().unwrap(), encryption_service.as_ref().unwrap(), delivery_tracker.as_mut().unwrap(), peripheral.as_ref().unwrap(), cmd_char.as_ref().unwrap(), ui_tx.clone(), &mut app).await;

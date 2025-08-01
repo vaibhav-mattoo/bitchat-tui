@@ -197,6 +197,8 @@ pub fn create_bitchat_message_payload_with_flags(sender: &str, content: &str, ch
 }
 
 pub fn create_bitchat_message_payload_full(sender: &str, content: &str, channel: Option<&str>, is_private: bool, sender_peer_id: &str) -> (Vec<u8>, String) {
+    debug_full_println!("[PAYLOAD] Creating message payload - sender: '{}', content: '{}', is_private: {}", sender, content, is_private);
+    
     // Match Swift's toBinaryPayload format exactly
     let mut data = Vec::new();
     let mut flags: u8 = 0;
@@ -208,6 +210,9 @@ pub fn create_bitchat_message_payload_full(sender: &str, content: &str, channel:
     
     // Always include sender peer ID for compatibility
     flags |= MSG_FLAG_HAS_SENDER_PEER_ID;
+    
+    debug_full_println!("[PAYLOAD] Flags: 0x{:02X} (is_private={}, has_sender_peer_id={})", 
+        flags, (flags & MSG_FLAG_IS_PRIVATE) != 0, (flags & MSG_FLAG_HAS_SENDER_PEER_ID) != 0);
     
     data.push(flags);
     
@@ -238,6 +243,9 @@ pub fn create_bitchat_message_payload_full(sender: &str, content: &str, channel:
     // Sender peer ID (since we set MSG_FLAG_HAS_SENDER_PEER_ID)
     data.push(sender_peer_id.len() as u8);
     data.extend_from_slice(sender_peer_id.as_bytes());
+    
+    debug_full_println!("[PAYLOAD] Created payload, total length: {}, message_id: {}", data.len(), id);
+    debug_full_println!("[PAYLOAD] Payload first 32 bytes: {:?}", &data[..std::cmp::min(32, data.len())]);
     
     (data, id)
 }

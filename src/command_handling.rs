@@ -336,46 +336,81 @@ pub async fn handle_dm_command(
                 }
             }
             
-            // Encrypt the padded payload for the recipient
-            match encryption_service.encrypt(&padded_payload, &target_peer_id) {
-                Ok(encrypted) => {
-                    if unsafe { DEBUG_LEVEL >= DebugLevel::Basic } {
-                        let _ = ui_tx.send(format!("[PRIVATE] Encrypted payload: {} bytes\n", encrypted.len())).await;
-                    }
-                    
-                    // Sign the encrypted payload
-                    let signature = encryption_service.sign(&encrypted);
-                    
-                    // Create packet with recipient ID for private routing
-                    let packet = create_bitchat_packet_with_recipient_and_signature(
-                        my_peer_id,
-                        &target_peer_id,  // Specify the recipient
-                        MessageType::Message,
-                        encrypted,
-                        Some(signature)
-                    );
-                    
-                    // Send the private message
-                    if let Err(_e) = send_packet_with_fragmentation(peripheral, cmd_char, packet, my_peer_id).await {
-                        let _ = ui_tx.send("\n\x1b[91m❌ Failed to send private message\x1b[0m\n".to_string()).await;
-                        let _ = ui_tx.send("\x1b[90mThe message could not be delivered. Connection may have been lost.\x1b[0m\n".to_string()).await;
-                    } else {
-                        // Add the message to the TUI's DM conversation
-                        app.add_dm_message(target_nickname.to_string(), private_message.to_string());
-                        
-                        // Add a system message to the current conversation to confirm the DM was sent
-                        let timestamp = chrono::Local::now();
-                        let system_msg = format!("[{}|DM] <you → {}> {}", timestamp.format("%H:%M"), target_nickname, private_message);
-                        app.add_log_message(format!("system: {}", system_msg));
-                        
+            // Try Noise encryption first (preferred for established sessions)
+            let encrypted = if _noise_session_manager.is_session_ready(&target_peer_id) {
+                match _noise_session_manager.encrypt_message(&target_peer_id, &padded_payload) {
+                    Ok(encrypted) => {
                         if unsafe { DEBUG_LEVEL >= DebugLevel::Basic } {
-                            let _ = ui_tx.send(format!("[PRIVATE] Message sent to {}\n", target_nickname)).await;
+                            let _ = ui_tx.send(format!("[PRIVATE] Encrypted with Noise transport cipher: {} bytes\n", encrypted.len())).await;
+                        }
+                        encrypted
+                    }
+                    Err(e) => {
+                        if unsafe { DEBUG_LEVEL >= DebugLevel::Basic } {
+                            let _ = ui_tx.send(format!("[PRIVATE] Noise encryption failed: {:?}, falling back to legacy\n", e)).await;
+                        }
+                        // Fallback to legacy encryption
+                        match encryption_service.encrypt(&padded_payload, &target_peer_id) {
+                            Ok(encrypted) => {
+                                if unsafe { DEBUG_LEVEL >= DebugLevel::Basic } {
+                                    let _ = ui_tx.send(format!("[PRIVATE] Encrypted with legacy method: {} bytes\n", encrypted.len())).await;
+                                }
+                                encrypted
+                            }
+                            Err(e) => {
+                                if unsafe { DEBUG_LEVEL >= DebugLevel::Basic } {
+                                    let _ = ui_tx.send(format!("[PRIVATE] All encryption methods failed: {:?}\n", e)).await;
+                                }
+                                return true;
+                            }
                         }
                     }
-                },
-                Err(e) => {
-                    let _ = ui_tx.send(format!("[!] Failed to encrypt private message: {:?}\n", e)).await;
-                    let _ = ui_tx.send(format!("[!] Make sure you have received key exchange from {}\n", target_nickname)).await;
+                }
+            } else {
+                // Use legacy encryption if no Noise session
+                match encryption_service.encrypt(&padded_payload, &target_peer_id) {
+                    Ok(encrypted) => {
+                        if unsafe { DEBUG_LEVEL >= DebugLevel::Basic } {
+                            let _ = ui_tx.send(format!("[PRIVATE] Encrypted with legacy method: {} bytes\n", encrypted.len())).await;
+                        }
+                        encrypted
+                    }
+                    Err(e) => {
+                        if unsafe { DEBUG_LEVEL >= DebugLevel::Basic } {
+                            let _ = ui_tx.send(format!("[PRIVATE] Legacy encryption failed: {:?}\n", e)).await;
+                        }
+                        return true;
+                    }
+                }
+            };
+            
+            // Sign the encrypted payload
+            let signature = encryption_service.sign(&encrypted);
+            
+            // Create packet with recipient ID for private routing
+            let packet = create_bitchat_packet_with_recipient_and_signature(
+                my_peer_id,
+                &target_peer_id,  // Specify the recipient
+                MessageType::Message,
+                encrypted,
+                Some(signature)
+            );
+            
+            // Send the private message
+            if let Err(_e) = send_packet_with_fragmentation(peripheral, cmd_char, packet, my_peer_id).await {
+                let _ = ui_tx.send("\n\x1b[91m❌ Failed to send private message\x1b[0m\n".to_string()).await;
+                let _ = ui_tx.send("\x1b[90mThe message could not be delivered. Connection may have been lost.\x1b[0m\n".to_string()).await;
+            } else {
+                // Add the message to the TUI's DM conversation
+                app.add_dm_message(target_nickname.to_string(), private_message.to_string());
+                
+                // Add a system message to the current conversation to confirm the DM was sent
+                let timestamp = chrono::Local::now();
+                let system_msg = format!("[{}|DM] <you → {}> {}", timestamp.format("%H:%M"), target_nickname, private_message);
+                app.add_log_message(format!("system: {}", system_msg));
+                
+                if unsafe { DEBUG_LEVEL >= DebugLevel::Basic } {
+                    let _ = ui_tx.send(format!("[PRIVATE] Message sent to {}\n", target_nickname)).await;
                 }
             }
             return true;
@@ -638,6 +673,19 @@ pub async fn handle_pass_command(
     false
 }
 
+
+pub async fn handle_fingerprint_command(
+    line: &str,
+    encryption_service: &EncryptionService,
+    ui_tx: mpsc::Sender<String>,
+) -> bool {
+    if line == "/fingerprint" {
+        let fingerprint = encryption_service.get_identity_fingerprint();
+        let _ = ui_tx.send(format!("\x1b[96m🔒 Your Identity Fingerprint:\x1b[0m\n\x1b[90m{}\x1b[0m\n", fingerprint)).await;
+        return true;
+    }
+    false
+}
 
 pub async fn handle_transfer_command(
     line: &str,

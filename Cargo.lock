@@ -142,6 +142,7 @@ dependencies = [
  "ed25519-dalek",
  "futures",
  "futures-util",
+ "generic-array",
  "getrandom 0.2.16",
  "hex",
  "hkdf",

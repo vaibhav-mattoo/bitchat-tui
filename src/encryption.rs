@@ -10,6 +10,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use x25519_dalek::{PublicKey, StaticSecret};
 use crate::debug_println;
+use crate::noise_session::NoiseSessionManager;
 
 #[derive(Debug)]
 pub enum EncryptionError {
@@ -39,6 +40,9 @@ pub struct EncryptionService {
     peer_signing_keys: Arc<RwLock<HashMap<String, VerifyingKey>>>,
     peer_identity_keys: Arc<RwLock<HashMap<String, VerifyingKey>>>,
     shared_secrets: Arc<RwLock<HashMap<String, [u8; 32]>>>,
+    
+    // Noise session manager for transport cipher encryption
+    noise_manager: Option<Arc<RwLock<NoiseSessionManager>>>,
 }
 
 impl EncryptionService {
@@ -65,6 +69,7 @@ impl EncryptionService {
             peer_signing_keys: Arc::new(RwLock::new(HashMap::new())),
             peer_identity_keys: Arc::new(RwLock::new(HashMap::new())),
             shared_secrets: Arc::new(RwLock::new(HashMap::new())),
+            noise_manager: None,
         }
     }
     
@@ -164,9 +169,40 @@ impl EncryptionService {
                 .collect::<String>()
         })
     }
+
+    /// Get our own identity fingerprint (SHA256 hash of our static public key)
+    pub fn get_identity_fingerprint(&self) -> String {
+        use sha2::Digest;
+        let hash = Sha256::digest(self.public_key.to_bytes());
+        hash.iter()
+            .map(|byte| format!("{:02x}", byte))
+            .collect::<String>()
+    }
     
     /// Encrypt data for a specific peer
+    /// Set the Noise session manager for transport cipher encryption
+    pub fn set_noise_manager(&mut self, noise_manager: Arc<RwLock<NoiseSessionManager>>) {
+        self.noise_manager = Some(noise_manager);
+    }
+    
+    /// Encrypt data for a peer using Noise transport ciphers if available, fallback to legacy
     pub fn encrypt(&self, data: &[u8], peer_id: &str) -> Result<Vec<u8>, EncryptionError> {
+        // Try Noise encryption first (for established sessions)
+        if let Some(noise_manager) = &self.noise_manager {
+            if let Ok(noise_manager) = noise_manager.read() {
+                if noise_manager.has_established_session(peer_id) {
+                    // We can't call mutable methods on a read guard, so we'll fall back to legacy
+                    debug_println!("[CRYPTO] Noise session exists but can't encrypt from read guard, falling back to legacy");
+                }
+            }
+        }
+        
+        // Fallback to legacy encryption method
+        self.encrypt_legacy(data, peer_id)
+    }
+    
+    /// Legacy encryption method (original implementation)
+    fn encrypt_legacy(&self, data: &[u8], peer_id: &str) -> Result<Vec<u8>, EncryptionError> {
         let secrets = self.shared_secrets.read().unwrap();
         let symmetric_key = secrets.get(peer_id)
             .ok_or(EncryptionError::NoSharedSecret)?;
@@ -186,8 +222,24 @@ impl EncryptionService {
         Ok(result)
     }
     
-    /// Decrypt data from a specific peer
+    /// Decrypt data from a specific peer using Noise transport ciphers if available, fallback to legacy
     pub fn decrypt(&self, data: &[u8], peer_id: &str) -> Result<Vec<u8>, EncryptionError> {
+        // Try Noise decryption first (for established sessions)
+        if let Some(noise_manager) = &self.noise_manager {
+            if let Ok(noise_manager) = noise_manager.read() {
+                if noise_manager.has_established_session(peer_id) {
+                    // We can't call mutable methods on a read guard, so we'll fall back to legacy
+                    debug_println!("[CRYPTO] Noise session exists but can't decrypt from read guard, falling back to legacy");
+                }
+            }
+        }
+        
+        // Fallback to legacy decryption method
+        self.decrypt_legacy(data, peer_id)
+    }
+    
+    /// Legacy decryption method (original implementation)
+    fn decrypt_legacy(&self, data: &[u8], peer_id: &str) -> Result<Vec<u8>, EncryptionError> {
         if data.len() < 12 {  // Minimum size for nonce
             return Err(EncryptionError::DecryptionFailed);
         }

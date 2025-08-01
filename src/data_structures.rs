@@ -2,6 +2,8 @@ use std::collections::{HashMap, HashSet};
 use std::time::SystemTime;
 use serde::{Serialize, Deserialize};
 use uuid::Uuid;
+use crate::binary_protocol_utils::{hex_encode, hex_decode};
+use sha2::{Sha256, Digest};
 
 // Debug levels
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
@@ -76,6 +78,38 @@ pub const BROADCAST_RECIPIENT: [u8; 8] = [0xFF; 8];
 
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq)]
+pub enum EncryptionStatus {
+    None,               // Failed or incompatible
+    NoHandshake,        // No handshake attempted yet
+    NoiseHandshaking,   // Currently establishing
+    NoiseSecured,       // Established but not verified
+    NoiseVerified,      // Established and verified
+}
+
+impl EncryptionStatus {
+    pub fn icon(&self) -> Option<&'static str> {
+        match self {
+            EncryptionStatus::None => Some("🔒❌"),           // Failed handshake
+            EncryptionStatus::NoHandshake => None,            // No icon when no handshake attempted
+            EncryptionStatus::NoiseHandshaking => Some("🔄"), // Establishing
+            EncryptionStatus::NoiseSecured => Some("🔒"),     // Encrypted
+            EncryptionStatus::NoiseVerified => Some("🔒✅"),  // Encrypted & Verified
+        }
+    }
+
+    pub fn description(&self) -> &'static str {
+        match self {
+            EncryptionStatus::None => "Encryption failed",
+            EncryptionStatus::NoHandshake => "Not encrypted",
+            EncryptionStatus::NoiseHandshaking => "Establishing encryption...",
+            EncryptionStatus::NoiseSecured => "Encrypted",
+            EncryptionStatus::NoiseVerified => "Encrypted & Verified",
+        }
+    }
+}
+
+#[repr(u8)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum MessageType { 
     Announce = 0x01, 
     KeyExchange = 0x02, 
@@ -107,18 +141,56 @@ pub enum MessageType {
     HandshakeRequest = 0x25,     // Request handshake for pending messages
 }
 
-#[derive(Debug, Default, Clone)]
-pub struct Peer { pub nickname: Option<String> }
+// Peer information
+#[derive(Debug, Clone)]
+pub struct Peer { 
+    pub nickname: Option<String>,
+    pub fingerprint: Option<String>,  // SHA256 hash of Noise static public key
+    pub last_seen: Option<SystemTime>,
+    pub connection_state: PeerConnectionState,
+}
 
+impl Default for Peer {
+    fn default() -> Self {
+        Self {
+            nickname: None,
+            fingerprint: None,
+            last_seen: None,
+            connection_state: PeerConnectionState::Disconnected,
+        }
+    }
+}
+
+// Peer connection states (matching Swift implementation)
+#[derive(Debug, Clone, PartialEq)]
+pub enum PeerConnectionState {
+    Disconnected,
+    Connected,
+    Authenticating,
+    Authenticated,
+}
+
+// Fingerprint calculation utility
+pub fn calculate_fingerprint(public_key_bytes: &[u8]) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(public_key_bytes);
+    let result = hasher.finalize();
+    result.iter().map(|b| format!("{:02x}", b)).collect::<String>()
+}
+
+// Packet structure - matches Swift BitchatPacket exactly
 #[derive(Debug)]
 pub struct BitchatPacket { 
-    pub msg_type: MessageType, 
-    pub _sender_id: Vec<u8>,  // Kept for protocol compatibility 
-    pub sender_id_str: String,  // Add string version for easy comparison
-    pub recipient_id: Option<Vec<u8>>,  // Add recipient ID
-    pub recipient_id_str: Option<String>,  // Add string version of recipient
-    pub payload: Vec<u8>,
-    pub ttl: u8,  // Add TTL field
+    pub version: u8,                    // Protocol version (1)
+    pub msg_type: MessageType,          // Message type
+    pub sender_id: Vec<u8>,            // Sender ID as binary data (8 bytes)
+    pub sender_id_str: String,          // Sender ID as hex string
+    pub recipient_id: Option<Vec<u8>>,  // Recipient ID as binary data (8 bytes) - optional
+    pub recipient_id_str: Option<String>, // Recipient ID as hex string - optional
+    pub timestamp: u64,                 // Timestamp in milliseconds
+    pub payload: Vec<u8>,              // Message payload
+    pub signature: Option<Vec<u8>>,    // Optional signature (64 bytes)
+    pub ttl: u8,                       // Time to live
 }
 
 #[derive(Debug)]
@@ -175,6 +247,42 @@ pub struct HandshakeRequest {
     #[serde(rename = "pendingMessageCount")]
     pub pending_message_count: u8,
     pub timestamp: u64,
+}
+
+impl HandshakeRequest {
+    /// Create a new HandshakeRequest with auto-generated UUID and current timestamp
+    pub fn new(requester_id: String, requester_nickname: String, target_id: String, pending_message_count: u8) -> Self {
+        use uuid::Uuid;
+        use std::time::{SystemTime, UNIX_EPOCH};
+        
+        Self {
+            request_id: Uuid::new_v4().to_string(),
+            requester_id,
+            requester_nickname,
+            target_id,
+            pending_message_count,
+            timestamp: SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs(),
+        }
+    }
+    
+    /// Private constructor for binary decoding (matches Swift implementation)
+    pub(crate) fn from_parts(
+        request_id: String,
+        requester_id: String,
+        requester_nickname: String,
+        target_id: String,
+        pending_message_count: u8,
+        timestamp: u64,
+    ) -> Self {
+        Self {
+            request_id,
+            requester_id,
+            requester_nickname,
+            target_id,
+            pending_message_count,
+            timestamp,
+        }
+    }
 }
 
 // Protocol-level acknowledgment
@@ -373,6 +481,188 @@ impl ProtocolVersion {
         let common: std::collections::HashSet<u8> = client_set.intersection(&server_set).cloned().collect();
         
         common.into_iter().max()
+    }
+}
+
+// MARK: - BinaryEncodable Implementation for BitchatPacket
+
+impl crate::binary_protocol_utils::BinaryEncodable for BitchatPacket {
+    fn to_binary_data(&self) -> Vec<u8> {
+        let mut data = Vec::new();
+        
+        // Header: version (1 byte)
+        data.push(self.version);
+        
+        // Type (1 byte)
+        data.push(self.msg_type as u8);
+        
+        // TTL (1 byte)
+        data.push(self.ttl);
+        
+        // Timestamp (8 bytes, big-endian)
+        data.extend_from_slice(&self.timestamp.to_be_bytes());
+        
+        // Flags (1 byte)
+        let mut flags: u8 = 0;
+        if self.recipient_id.is_some() {
+            flags |= FLAG_HAS_RECIPIENT;
+        }
+        if self.signature.is_some() {
+            flags |= FLAG_HAS_SIGNATURE;
+        }
+        data.push(flags);
+        
+        // Payload length (2 bytes, big-endian)
+        let payload_len = self.payload.len() as u16;
+        data.extend_from_slice(&payload_len.to_be_bytes());
+        
+        // SenderID (8 bytes)
+        data.extend_from_slice(&self.sender_id);
+        
+        // RecipientID (8 bytes) - if present
+        if let Some(recipient_id) = &self.recipient_id {
+            data.extend_from_slice(recipient_id);
+        } else {
+            // Use broadcast recipient
+            data.extend_from_slice(&BROADCAST_RECIPIENT);
+        }
+        
+        // Payload
+        data.extend_from_slice(&self.payload);
+        
+        // Signature (64 bytes) - if present
+        if let Some(signature) = &self.signature {
+            data.extend_from_slice(signature);
+        }
+        
+        data
+    }
+    
+    fn from_binary_data(data: &[u8]) -> Option<Self> {
+        if data.len() < 22 { // Minimum size: version(1) + type(1) + ttl(1) + timestamp(8) + flags(1) + payload_len(2) + sender(8)
+            return None;
+        }
+        
+        let mut offset = 0;
+        
+        // Version
+        let version = data.get(offset)?;
+        if *version != 1 {
+            return None; // Only support version 1
+        }
+        offset += 1;
+        
+        // Message type
+        let msg_type_byte = data.get(offset)?;
+        let msg_type = match msg_type_byte {
+            0x01 => MessageType::Announce,
+            0x02 => MessageType::KeyExchange,
+            0x03 => MessageType::Leave,
+            0x04 => MessageType::Message,
+            0x05 => MessageType::FragmentStart,
+            0x06 => MessageType::FragmentContinue,
+            0x07 => MessageType::FragmentEnd,
+            0x08 => MessageType::ChannelAnnounce,
+            0x09 => MessageType::ChannelRetention,
+            0x0A => MessageType::DeliveryAck,
+            0x0B => MessageType::DeliveryStatusRequest,
+            0x0C => MessageType::ReadReceipt,
+            0x10 => MessageType::NoiseHandshakeInit,
+            0x11 => MessageType::NoiseHandshakeResp,
+            0x12 => MessageType::NoiseEncrypted,
+            0x13 => MessageType::NoiseIdentityAnnounce,
+            0x20 => MessageType::VersionHello,
+            0x21 => MessageType::VersionAck,
+            0x22 => MessageType::ProtocolAck,
+            0x23 => MessageType::ProtocolNack,
+            0x24 => MessageType::SystemValidation,
+            0x25 => MessageType::HandshakeRequest,
+            _ => return None,
+        };
+        offset += 1;
+        
+        // TTL
+        let ttl = *data.get(offset)?;
+        offset += 1;
+        
+        // Timestamp (8 bytes, big-endian)
+        if data.len() < offset + 8 {
+            return None;
+        }
+        let timestamp_bytes = &data[offset..offset + 8];
+        let timestamp = u64::from_be_bytes([
+            timestamp_bytes[0], timestamp_bytes[1], timestamp_bytes[2], timestamp_bytes[3],
+            timestamp_bytes[4], timestamp_bytes[5], timestamp_bytes[6], timestamp_bytes[7]
+        ]);
+        offset += 8;
+        
+        // Flags
+        let flags = *data.get(offset)?;
+        let has_recipient = (flags & FLAG_HAS_RECIPIENT) != 0;
+        let has_signature = (flags & FLAG_HAS_SIGNATURE) != 0;
+        let is_compressed = (flags & FLAG_IS_COMPRESSED) != 0;
+        offset += 1;
+        
+        // Payload length (2 bytes, big-endian)
+        if data.len() < offset + 2 {
+            return None;
+        }
+        let payload_len = u16::from_be_bytes([data[offset], data[offset + 1]]) as usize;
+        offset += 2;
+        
+        // SenderID (8 bytes)
+        if data.len() < offset + 8 {
+            return None;
+        }
+        let sender_id = data.get(offset..offset + 8)?.to_vec();
+        let sender_id_str = hex_encode(&sender_id);
+        offset += 8;
+        
+        // RecipientID (8 bytes) - if present
+        let recipient_id = if has_recipient {
+            if data.len() < offset + 8 {
+                return None;
+            }
+            let recipient_bytes = data.get(offset..offset + 8)?.to_vec();
+            offset += 8;
+            Some(recipient_bytes)
+        } else {
+            None
+        };
+        
+        let recipient_id_str = recipient_id.as_ref().map(|id| hex_encode(id));
+        
+        // Payload
+        if data.len() < offset + payload_len {
+            return None;
+        }
+        let payload = data.get(offset..offset + payload_len)?.to_vec();
+        offset += payload_len;
+        
+        // Signature (64 bytes) - if present
+        let signature = if has_signature {
+            if data.len() < offset + SIGNATURE_SIZE {
+                return None;
+            }
+            let signature_data = data.get(offset..offset + SIGNATURE_SIZE)?.to_vec();
+            offset += SIGNATURE_SIZE;
+            Some(signature_data)
+        } else {
+            None
+        };
+        
+        Some(BitchatPacket {
+            version: *version,
+            msg_type,
+            sender_id,
+            sender_id_str,
+            recipient_id,
+            recipient_id_str,
+            timestamp,
+            payload,
+            signature,
+            ttl,
+        })
     }
 }
 

@@ -1,5 +1,6 @@
 
 use std::time::SystemTime;
+use hex;
 use crate::data_structures::{
     MessageType, FLAG_HAS_RECIPIENT, FLAG_HAS_SIGNATURE, BROADCAST_RECIPIENT
 };
@@ -71,6 +72,8 @@ pub fn create_bitchat_packet_with_recipient_and_signature(sender_id_str: &str, r
 pub fn create_bitchat_packet_with_recipient(sender_id_str: &str, recipient_id_str: Option<&str>, msg_type: MessageType, payload: Vec<u8>, signature: Option<Vec<u8>>) -> Vec<u8> {
     debug_full_println!("[PACKET] ==================== PACKET CREATION START ====================");
     debug_full_println!("[PACKET] Creating packet: type={:?} (0x{:02X}), sender_id={}, payload_len={}", msg_type, msg_type as u8, sender_id_str, payload.len());
+    debug_full_println!("[PACKET] Recipient: {:?}", recipient_id_str);
+    debug_full_println!("[PACKET] Payload first 32 bytes: {:?}", &payload[..std::cmp::min(32, payload.len())]);
     
     // SWIFT BINARYPROTOCOL FORMAT: 
     // Header (Fixed 13 bytes):
@@ -129,13 +132,28 @@ pub fn create_bitchat_packet_with_recipient(sender_id_str: &str, recipient_id_st
     debug_full_println!("[PACKET] Header: version={}, type=0x{:02X}, ttl={}, flags=0x{:02X}, payload_len={}", 
             version, msg_type_byte, ttl, flags, payload_length);
     
-    // 7. Sender ID (8 bytes) - Use ASCII bytes directly, pad with zeros
-    let mut sender_id_bytes = sender_id_str.as_bytes().to_vec();
-    if sender_id_bytes.len() < 8 {
-        sender_id_bytes.resize(8, 0);
-    } else if sender_id_bytes.len() > 8 {
-        sender_id_bytes.truncate(8);
-    }
+    // 7. Sender ID (8 bytes) - Convert hex string to binary bytes
+    let sender_id_bytes = match hex::decode(sender_id_str) {
+        Ok(bytes) => {
+            let mut padded = bytes;
+            if padded.len() < 8 {
+                padded.extend(vec![0; 8 - padded.len()]);
+            } else if padded.len() > 8 {
+                padded.truncate(8);
+            }
+            padded
+        },
+        Err(_) => {
+            // Fallback: treat as ASCII and pad
+            let mut sender_id_bytes = sender_id_str.as_bytes().to_vec();
+            if sender_id_bytes.len() < 8 {
+                sender_id_bytes.resize(8, 0);
+            } else if sender_id_bytes.len() > 8 {
+                sender_id_bytes.truncate(8);
+            }
+            sender_id_bytes
+        }
+    };
     data.extend_from_slice(&sender_id_bytes);
     debug_full_println!("[PACKET] Sender ID: {} -> {} bytes: {}", sender_id_str, sender_id_bytes.len(), hex::encode(&sender_id_bytes));
     
@@ -143,12 +161,27 @@ pub fn create_bitchat_packet_with_recipient(sender_id_str: &str, recipient_id_st
     if has_recipient {
         if let Some(recipient) = recipient_id_str {
             // Private message - use specific recipient
-            let mut recipient_bytes = recipient.as_bytes().to_vec();
-            if recipient_bytes.len() < 8 {
-                recipient_bytes.resize(8, 0);
-            } else if recipient_bytes.len() > 8 {
-                recipient_bytes.truncate(8);
-            }
+            let recipient_bytes = match hex::decode(recipient) {
+                Ok(bytes) => {
+                    let mut padded = bytes;
+                    if padded.len() < 8 {
+                        padded.extend(vec![0; 8 - padded.len()]);
+                    } else if padded.len() > 8 {
+                        padded.truncate(8);
+                    }
+                    padded
+                },
+                Err(_) => {
+                    // Fallback: treat as ASCII and pad
+                    let mut recipient_bytes = recipient.as_bytes().to_vec();
+                    if recipient_bytes.len() < 8 {
+                        recipient_bytes.resize(8, 0);
+                    } else if recipient_bytes.len() > 8 {
+                        recipient_bytes.truncate(8);
+                    }
+                    recipient_bytes
+                }
+            };
             data.extend_from_slice(&recipient_bytes);
             debug_full_println!("[PACKET] Recipient ID (private): {} -> {} bytes: {}", recipient, recipient_bytes.len(), hex::encode(&recipient_bytes));
         } else {
