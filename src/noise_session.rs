@@ -1,5 +1,5 @@
-use crate::debug_full_println;
 use crate::data_structures::EncryptionStatus;
+use crate::debug_full_println;
 use crate::noise_protocol::{
     NoiseCipherState, NoiseError, NoiseHandshakeState, NoisePattern, NoiseRole, NoiseSymmetricState,
 };
@@ -434,10 +434,10 @@ pub struct NoiseSessionManager {
     // Fingerprint management (matching Swift implementation)
     peer_fingerprints: Arc<Mutex<HashMap<String, String>>>, // peer_id -> fingerprint
     fingerprint_to_peer_id: Arc<Mutex<HashMap<String, String>>>, // fingerprint -> peer_id
-    
+
     // Verified fingerprints (matching Swift implementation)
     verified_fingerprints: Arc<Mutex<std::collections::HashSet<String>>>,
-    
+
     // Encryption status tracking (matching Swift implementation)
     peer_encryption_status: Arc<Mutex<HashMap<String, EncryptionStatus>>>,
 
@@ -543,7 +543,7 @@ impl NoiseSessionManager {
     pub fn update_encryption_status(&mut self, peer_id: &str) {
         let sessions = self.sessions.lock().unwrap();
         let mut status_map = self.peer_encryption_status.lock().unwrap();
-        
+
         if let Some(session) = sessions.get(peer_id) {
             match session.get_state() {
                 NoiseSessionState::Established => {
@@ -610,17 +610,16 @@ impl NoiseSessionManager {
 
     pub fn get_encryption_status(&self, peer_id: &str) -> EncryptionStatus {
         let status_map = self.peer_encryption_status.lock().unwrap();
-        status_map.get(peer_id).cloned().unwrap_or(EncryptionStatus::NoHandshake)
+        status_map
+            .get(peer_id)
+            .cloned()
+            .unwrap_or(EncryptionStatus::NoHandshake)
     }
 
     pub fn clear_encryption_status(&mut self, peer_id: &str) {
         let mut status_map = self.peer_encryption_status.lock().unwrap();
         status_map.remove(peer_id);
-        log_noise_event(
-            "STATUS_CLEARED",
-            peer_id,
-            "Cleared encryption status",
-        );
+        log_noise_event("STATUS_CLEARED", peer_id, "Cleared encryption status");
     }
 
     // MARK: - Identity Fingerprint (matching Swift implementation)
@@ -698,7 +697,10 @@ impl NoiseSessionManager {
             log_noise_event(
                 "PEER_AUTH_CALLBACK",
                 &peer_id,
-                &format!("Calling peer authenticated callback with fingerprint: {}", &fingerprint[..16]),
+                &format!(
+                    "Calling peer authenticated callback with fingerprint: {}",
+                    &fingerprint[..16]
+                ),
             );
             callback(peer_id.clone(), fingerprint);
         }
@@ -720,7 +722,7 @@ impl NoiseSessionManager {
         let mut sessions = self.sessions.lock().unwrap();
         if let Some(existing_session) = sessions.get(&peer_id) {
             if existing_session.state == NoiseSessionState::Established {
-                return Err(NoiseError::AlreadyEstablished);   // keep the channel
+                return Err(NoiseError::AlreadyEstablished); // keep the channel
             }
             // handshaking or failed sessions are handled below
         }
@@ -894,44 +896,53 @@ impl NoiseSessionManager {
         log_noise_event(
             "ENCRYPT_MESSAGE_START",
             peer_id,
-            &format!("Starting encryption for message of length: {}", message.len()),
+            &format!(
+                "Starting encryption for message of length: {}",
+                message.len()
+            ),
         );
-        
+
         let mut sessions = self.sessions.lock().unwrap();
         log_noise_event(
             "ENCRYPT_MESSAGE_SESSIONS",
             peer_id,
             &format!("Found {} total sessions", sessions.len()),
         );
-        
+
         if let Some(session) = sessions.get_mut(peer_id) {
             log_noise_event(
                 "ENCRYPT_MESSAGE_SESSION_FOUND",
                 peer_id,
                 &format!("Session state: {:?}", session.get_state()),
             );
-            
+
             if session.is_established() {
                 log_noise_event(
                     "ENCRYPT_MESSAGE_ESTABLISHED",
                     peer_id,
                     "Session is established, checking send cipher",
                 );
-                
+
                 if let Some(send_cipher) = &mut session.send_cipher {
                     log_noise_event(
                         "ENCRYPT_MESSAGE_CIPHER_FOUND",
                         peer_id,
-                        &format!("Send cipher found, encrypting message of length: {}", message.len()),
+                        &format!(
+                            "Send cipher found, encrypting message of length: {}",
+                            message.len()
+                        ),
                     );
-                    
+
                     let result = send_cipher.encrypt(message, &[]);
                     match &result {
                         Ok(encrypted) => {
                             log_noise_event(
                                 "ENCRYPT_MESSAGE_SUCCESS",
                                 peer_id,
-                                &format!("Encryption successful, result length: {}", encrypted.len()),
+                                &format!(
+                                    "Encryption successful, result length: {}",
+                                    encrypted.len()
+                                ),
                             );
                         }
                         Err(e) => {
@@ -956,7 +967,10 @@ impl NoiseSessionManager {
                 log_noise_event(
                     "ENCRYPT_MESSAGE_NOT_ESTABLISHED",
                     peer_id,
-                    &format!("Session not established, current state: {:?}", session.get_state()),
+                    &format!(
+                        "Session not established, current state: {:?}",
+                        session.get_state()
+                    ),
                 );
                 return Err(NoiseError::NotEstablished);
             }
@@ -978,44 +992,53 @@ impl NoiseSessionManager {
         log_noise_event(
             "DECRYPT_MESSAGE_START",
             peer_id,
-            &format!("Starting decryption for message of length: {}", encrypted_message.len()),
+            &format!(
+                "Starting decryption for message of length: {}",
+                encrypted_message.len()
+            ),
         );
-        
+
         let mut sessions = self.sessions.lock().unwrap();
         log_noise_event(
             "DECRYPT_MESSAGE_SESSIONS",
             peer_id,
             &format!("Found {} total sessions", sessions.len()),
         );
-        
+
         if let Some(session) = sessions.get_mut(peer_id) {
             log_noise_event(
                 "DECRYPT_MESSAGE_SESSION_FOUND",
                 peer_id,
                 &format!("Session state: {:?}", session.get_state()),
             );
-            
+
             if session.is_established() {
                 log_noise_event(
                     "DECRYPT_MESSAGE_ESTABLISHED",
                     peer_id,
                     "Session is established, checking receive cipher",
                 );
-                
+
                 if let Some(recv_cipher) = &mut session.receive_cipher {
                     log_noise_event(
                         "DECRYPT_MESSAGE_CIPHER_FOUND",
                         peer_id,
-                        &format!("Receive cipher found, decrypting message of length: {}", encrypted_message.len()),
+                        &format!(
+                            "Receive cipher found, decrypting message of length: {}",
+                            encrypted_message.len()
+                        ),
                     );
-                    
+
                     let result = recv_cipher.decrypt(encrypted_message, &[]);
                     match &result {
                         Ok(decrypted) => {
                             log_noise_event(
                                 "DECRYPT_MESSAGE_SUCCESS",
                                 peer_id,
-                                &format!("Decryption successful, result length: {}", decrypted.len()),
+                                &format!(
+                                    "Decryption successful, result length: {}",
+                                    decrypted.len()
+                                ),
                             );
                         }
                         Err(e) => {
@@ -1040,7 +1063,10 @@ impl NoiseSessionManager {
                 log_noise_event(
                     "DECRYPT_MESSAGE_NOT_ESTABLISHED",
                     peer_id,
-                    &format!("Session not established, current state: {:?}", session.get_state()),
+                    &format!(
+                        "Session not established, current state: {:?}",
+                        session.get_state()
+                    ),
                 );
                 return Err(NoiseError::NotEstablished);
             }
@@ -1115,7 +1141,7 @@ impl NoiseSessionManager {
                     "[DEBUG] Handshake message created, length: {}",
                     message.len()
                 ));
-                
+
                 // Call handshake required callback if set
                 if let Some(callback) = &self.on_handshake_required {
                     log_noise_event(
@@ -1129,7 +1155,7 @@ impl NoiseSessionManager {
                 // Update encryption status (need to drop sessions lock first)
                 drop(sessions);
                 self.update_encryption_status(peer_id);
-                
+
                 Ok(message)
             } else {
                 write_noise_debug_log("[DEBUG] No handshake state found");
@@ -1166,7 +1192,7 @@ impl NoiseSessionManager {
         }
 
         let mut sessions = self.sessions.lock().unwrap();
-        
+
         // Only create new session if none exists or current is failed
         let should_create_new = match sessions.get(peer_id) {
             None => true,
@@ -1195,14 +1221,14 @@ impl NoiseSessionManager {
 
         let session = sessions.get_mut(peer_id).unwrap();
         let result = session.process_handshake_message(handshake_data);
-        
+
         // Handle session established callback
         if result.is_ok() && session.is_established() {
             if let Some(remote_key) = session.get_remote_static_public_key() {
                 self.handle_session_established(peer_id.to_string(), remote_key);
             }
         }
-        
+
         result
     }
 
@@ -1254,11 +1280,12 @@ impl NoiseSessionManager {
     pub fn get_handshake_hash(&self, peer_id: &str) -> Option<Vec<u8>> {
         self.get_session(peer_id)?.get_handshake_hash()
     }
-    
+
     /// Check if a session is ready for transport cipher encryption/decryption
     pub fn is_session_ready(&self, peer_id: &str) -> bool {
         let sessions = self.sessions.lock().unwrap();
-        sessions.get(peer_id)
+        sessions
+            .get(peer_id)
             .map(|s| s.is_established())
             .unwrap_or(false)
     }
@@ -1321,4 +1348,3 @@ impl Clone for NoiseSymmetricState {
         }
     }
 }
-

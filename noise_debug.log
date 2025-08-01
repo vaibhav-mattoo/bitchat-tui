@@ -1,0 +1,260 @@
+[1754018366] [DEBUG] Checking if session exists for peer: 15d6d33863a41306 - Result: false
+[1754018366] [DEBUG] Creating session for peer: 15d6d33863a41306 with role: Responder
+[1754018366] [DEBUG] About to create new NoiseHandshakeState
+[1754018366] [DEBUG] Creating handshake state as responder
+[1754018366] [DEBUG] Handshake state created successfully
+[1754018366] [DEBUG] Session created successfully for peer: 15d6d33863a41306
+[1754018366] [DEBUG] Starting handle_incoming_handshake for peer: 15d6d33863a41306
+[1754018366] [NOISE_DEBUG] HANDSHAKE_PROCESS - Peer: 15d6d33863a41306 - Processing message of 32 bytes, current state: Handshaking, role: Responder
+[1754018366] [NOISE_DEBUG] HANDSHAKE_READ - Peer: 15d6d33863a41306 - Reading handshake message
+[1754018366] [NOISE_DEBUG] HANDSHAKE_READ_SUCCESS - Peer: 15d6d33863a41306 - Successfully read handshake message
+[1754018366] [NOISE_DEBUG] HANDSHAKE_RESPONSE_NEEDED - Peer: 15d6d33863a41306 - Generating handshake response
+[1754018366] [NOISE_DEBUG] HANDSHAKE_RESPONSE_CREATED - Peer: 15d6d33863a41306 - Response size: 96 bytes
+[1754018367] [DEBUG] Checking if session exists for peer: 15d6d33863a41306 - Result: true
+[1754018367] [DEBUG] Starting handle_incoming_handshake for peer: 15d6d33863a41306
+[1754018367] [NOISE_DEBUG] HANDSHAKE_PROCESS - Peer: 15d6d33863a41306 - Processing message of 32 bytes, current state: Handshaking, role: Responder
+[1754018367] [NOISE_DEBUG] HANDSHAKE_READ - Peer: 15d6d33863a41306 - Reading handshake message
+[1754018368] [DEBUG] Checking if session exists for peer: 15d6d33863a41306 - Result: true
+[1754018368] [DEBUG] Starting handle_incoming_handshake for peer: 15d6d33863a41306
+[1754018368] [NOISE_DEBUG] HANDSHAKE_PROCESS - Peer: 15d6d33863a41306 - Processing message of 32 bytes, current state: Handshaking, role: Responder
+[1754018368] [NOISE_DEBUG] HANDSHAKE_READ - Peer: 15d6d33863a41306 - Reading handshake message
+[1754018370] [DEBUG] Checking if session exists for peer: 15d6d33863a41306 - Result: true
+[1754018370] [DEBUG] Starting handle_incoming_handshake for peer: 15d6d33863a41306
+[1754018370] [NOISE_DEBUG] HANDSHAKE_PROCESS - Peer: 15d6d33863a41306 - Processing message of 32 bytes, current state: Handshaking, role: Responder
+[1754018370] [NOISE_DEBUG] HANDSHAKE_READ - Peer: 15d6d33863a41306 - Reading handshake message
+[1754018380] [DEBUG] Creating session for peer: 15d6d33863a41306 with role: Initiator
+[1754018380] [DEBUG] About to create new NoiseHandshakeState
+[1754018380] [DEBUG] Creating handshake state as initiator
+[1754018380] [DEBUG] Handshake state created successfully
+[1754018380] [DEBUG] Updated existing session for peer: 15d6d33863a41306
+[1754018380] [DEBUG] Starting initiate_handshake for peer: 15d6d33863a41306
+[1754018380] [DEBUG] Session already exists for peer: 15d6d33863a41306
+[1754018380] [DEBUG] Starting handshake for session with role: Responder
+[1754018380] [DEBUG] Handshake message created, length: 32
+[1754018380] [NOISE_DEBUG] HANDSHAKE_REQUIRED - Peer: 15d6d33863a41306 - Calling handshake required callback
+[1754018380] [NOISE_DEBUG] STATUS_UPDATE - Peer: 15d6d33863a41306 - Setting encryption status to NoiseHandshaking
+[1754018380] [DEBUG] Checking if session exists for peer: 15d6d33863a41306 - Result: true
+[1754018380] [DEBUG] Starting handle_incoming_handshake for peer: 15d6d33863a41306
+[1754018380] [NOISE_DEBUG] HANDSHAKE_PROCESS - Peer: 15d6d33863a41306 - Processing message of 96 bytes, current state: Handshaking, role: Responder
+[1754018380] [NOISE_DEBUG] HANDSHAKE_READ - Peer: 15d6d33863a41306 - Reading handshake message
+[1754018380] [NOISE_DEBUG] HANDSHAKE_READ_SUCCESS - Peer: 15d6d33863a41306 - Successfully read handshake message
+[1754018380] [NOISE_DEBUG] HANDSHAKE_RESPONSE_NEEDED - Peer: 15d6d33863a41306 - Generating handshake response
+[1754018380] [NOISE_DEBUG] HANDSHAKE_RESPONSE_CREATED - Peer: 15d6d33863a41306 - Response size: 64 bytes
+[1754018380] [NOISE_DEBUG] HANDSHAKE_COMPLETE_AFTER_RESPONSE - Peer: 15d6d33863a41306 - Handshake complete after writing response
+[1754018380] [NOISE_DEBUG] HANDSHAKE_CIPHERS_SET_AFTER_RESPONSE - Peer: 15d6d33863a41306 - Transport ciphers established after response
+[1754018380] [NOISE_DEBUG] HANDSHAKE_REMOTE_KEY_AFTER_RESPONSE - Peer: 15d6d33863a41306 - Remote static key: [107, 252, 15, 51, 42, 38, 183, 114]
+[1754018380] [NOISE_DEBUG] HANDSHAKE_HASH_STORED_AFTER_RESPONSE - Peer: 15d6d33863a41306 - Handshake hash: [224, 215, 227, 54, 77, 123, 26, 228, 132, 55, 6, 179, 229, 82, 11, 91]
+[1754018380] [NOISE_DEBUG] HANDSHAKE_ESTABLISHED_AFTER_RESPONSE - Peer: 15d6d33863a41306 - Session established after response
+[1754018380] [NOISE_DEBUG] FINGERPRINT_CALC - Peer: 15d6d33863a41306 - Calculating fingerprint for remote static key
+[1754018380] [NOISE_DEBUG] FINGERPRINT_CALCULATED - Peer: 15d6d33863a41306 - Fingerprint: 90fe2b89e22c24d6
+[1754018380] [NOISE_DEBUG] FINGERPRINT_STORED - Peer: 15d6d33863a41306 - Fingerprint mappings stored
+[1754018380] [NOISE_DEBUG] CALLBACK_TRIGGERED - Peer: 15d6d33863a41306 - Calling session established callback
+[1754018380] [NOISE_DEBUG] PEER_AUTH_CALLBACK - Peer: 15d6d33863a41306 - Calling peer authenticated callback with fingerprint: 90fe2b89e22c24d6
+[1754018381] [DEBUG] Checking if session exists for peer: 15d6d33863a41306 - Result: true
+[1754018381] [DEBUG] Starting handle_incoming_handshake for peer: 15d6d33863a41306
+[1754018381] [DEBUG] Ignoring handshake - session already established for peer: 15d6d33863a41306
+[1754018381] [NOISE_DEBUG] ENCRYPT_MESSAGE_START - Peer: 15d6d33863a41306 - Starting encryption for message of length: 2
+[1754018381] [NOISE_DEBUG] ENCRYPT_MESSAGE_SESSIONS - Peer: 15d6d33863a41306 - Found 1 total sessions
+[1754018381] [NOISE_DEBUG] ENCRYPT_MESSAGE_SESSION_FOUND - Peer: 15d6d33863a41306 - Session state: Established
+[1754018381] [NOISE_DEBUG] ENCRYPT_MESSAGE_ESTABLISHED - Peer: 15d6d33863a41306 - Session is established, checking send cipher
+[1754018381] [NOISE_DEBUG] ENCRYPT_MESSAGE_CIPHER_FOUND - Peer: 15d6d33863a41306 - Send cipher found, encrypting message of length: 2
+[1754018381] [NOISE_DEBUG] ENCRYPT_MESSAGE_SUCCESS - Peer: 15d6d33863a41306 - Encryption successful, result length: 22
+[1754018382] [DEBUG] Checking if session exists for peer: 15d6d33863a41306 - Result: true
+[1754018382] [DEBUG] Starting handle_incoming_handshake for peer: 15d6d33863a41306
+[1754018382] [DEBUG] Ignoring handshake - session already established for peer: 15d6d33863a41306
+[1754018384] [DEBUG] Checking if session exists for peer: 15d6d33863a41306 - Result: true
+[1754018384] [DEBUG] Starting handle_incoming_handshake for peer: 15d6d33863a41306
+[1754018384] [DEBUG] Ignoring handshake - session already established for peer: 15d6d33863a41306
+[1754019323] [DEBUG] Checking if session exists for peer: 15d6d33863a41306 - Result: false
+[1754019323] [DEBUG] Creating session for peer: 15d6d33863a41306 with role: Responder
+[1754019323] [DEBUG] About to create new NoiseHandshakeState
+[1754019323] [DEBUG] Creating handshake state as responder
+[1754019323] [DEBUG] Handshake state created successfully
+[1754019323] [DEBUG] Session created successfully for peer: 15d6d33863a41306
+[1754019323] [DEBUG] Starting handle_incoming_handshake for peer: 15d6d33863a41306
+[1754019323] [NOISE_DEBUG] HANDSHAKE_PROCESS - Peer: 15d6d33863a41306 - Processing message of 32 bytes, current state: Handshaking, role: Responder
+[1754019323] [DEBUG] Handshake Debug Info for peer: 15d6d33863a41306
+[1754019323] [DEBUG] - Message size: 32 bytes
+[1754019323] [DEBUG] - Current state: Handshaking
+[1754019323] [DEBUG] - Role: Responder
+[1754019323] [DEBUG] - Has handshake state: true
+[1754019323] [NOISE_DEBUG] HANDSHAKE_READ - Peer: 15d6d33863a41306 - Reading handshake message
+[1754019323] [NOISE_DEBUG] HANDSHAKE_READ_SUCCESS - Peer: 15d6d33863a41306 - Successfully read handshake message, payload size: 0
+[1754019323] [DEBUG] Handshake read successful for peer: 15d6d33863a41306, payload size: 0
+[1754019323] [NOISE_DEBUG] HANDSHAKE_RESPONSE_NEEDED - Peer: 15d6d33863a41306 - Generating handshake response
+[1754019323] [NOISE_DEBUG] HANDSHAKE_RESPONSE_CREATED - Peer: 15d6d33863a41306 - Response size: 96 bytes
+[1754019324] [DEBUG] Checking if session exists for peer: 15d6d33863a41306 - Result: true
+[1754019324] [DEBUG] Starting handle_incoming_handshake for peer: 15d6d33863a41306
+[1754019324] [NOISE_DEBUG] HANDSHAKE_PROCESS - Peer: 15d6d33863a41306 - Processing message of 32 bytes, current state: Handshaking, role: Responder
+[1754019324] [DEBUG] Handshake Debug Info for peer: 15d6d33863a41306
+[1754019324] [DEBUG] - Message size: 32 bytes
+[1754019324] [DEBUG] - Current state: Handshaking
+[1754019324] [DEBUG] - Role: Responder
+[1754019324] [DEBUG] - Has handshake state: true
+[1754019324] [NOISE_DEBUG] HANDSHAKE_READ - Peer: 15d6d33863a41306 - Reading handshake message
+[1754019324] [NOISE_DEBUG] HANDSHAKE_READ_ERROR - Peer: 15d6d33863a41306 - Failed to read handshake message: InvalidMessage
+[1754019324] [DEBUG] Handshake read failed for peer: 15d6d33863a41306 - InvalidMessage
+[1754019324] [DEBUG] Handshake failed for peer: 15d6d33863a41306 - InvalidMessage
+[1754019325] [DEBUG] Checking if session exists for peer: 15d6d33863a41306 - Result: true
+[1754019325] [DEBUG] Starting handle_incoming_handshake for peer: 15d6d33863a41306
+[1754019325] [DEBUG] Creating new session for peer: 15d6d33863a41306
+[1754019325] [NOISE_DEBUG] HANDSHAKE_PROCESS - Peer: 15d6d33863a41306 - Processing message of 32 bytes, current state: Uninitialized, role: Responder
+[1754019325] [DEBUG] Handshake Debug Info for peer: 15d6d33863a41306
+[1754019325] [DEBUG] - Message size: 32 bytes
+[1754019325] [DEBUG] - Current state: Uninitialized
+[1754019325] [DEBUG] - Role: Responder
+[1754019325] [DEBUG] - Has handshake state: false
+[1754019325] [NOISE_DEBUG] HANDSHAKE_INIT_RESPONDER - Peer: 15d6d33863a41306 - Initializing handshake state for responder
+[1754019325] [NOISE_DEBUG] HANDSHAKE_STATE_CHANGE - Peer: 15d6d33863a41306 - Responder state changed to Handshaking
+[1754019325] [NOISE_DEBUG] HANDSHAKE_READ - Peer: 15d6d33863a41306 - Reading handshake message
+[1754019325] [NOISE_DEBUG] HANDSHAKE_READ_SUCCESS - Peer: 15d6d33863a41306 - Successfully read handshake message, payload size: 0
+[1754019325] [DEBUG] Handshake read successful for peer: 15d6d33863a41306, payload size: 0
+[1754019325] [NOISE_DEBUG] HANDSHAKE_RESPONSE_NEEDED - Peer: 15d6d33863a41306 - Generating handshake response
+[1754019325] [NOISE_DEBUG] HANDSHAKE_RESPONSE_CREATED - Peer: 15d6d33863a41306 - Response size: 96 bytes
+[1754019327] [DEBUG] Checking if session exists for peer: 15d6d33863a41306 - Result: true
+[1754019327] [DEBUG] Starting handle_incoming_handshake for peer: 15d6d33863a41306
+[1754019327] [NOISE_DEBUG] HANDSHAKE_PROCESS - Peer: 15d6d33863a41306 - Processing message of 32 bytes, current state: Handshaking, role: Responder
+[1754019327] [DEBUG] Handshake Debug Info for peer: 15d6d33863a41306
+[1754019327] [DEBUG] - Message size: 32 bytes
+[1754019327] [DEBUG] - Current state: Handshaking
+[1754019327] [DEBUG] - Role: Responder
+[1754019327] [DEBUG] - Has handshake state: true
+[1754019327] [NOISE_DEBUG] HANDSHAKE_READ - Peer: 15d6d33863a41306 - Reading handshake message
+[1754019327] [NOISE_DEBUG] HANDSHAKE_READ_ERROR - Peer: 15d6d33863a41306 - Failed to read handshake message: InvalidMessage
+[1754019327] [DEBUG] Handshake read failed for peer: 15d6d33863a41306 - InvalidMessage
+[1754019327] [DEBUG] Handshake failed for peer: 15d6d33863a41306 - InvalidMessage
+[1754019824] [DEBUG] Checking if session exists for peer: 15d6d33863a41306 - Result: false
+[1754019824] [DEBUG] Creating session for peer: 15d6d33863a41306 with role: Responder
+[1754019824] [DEBUG] About to create new NoiseHandshakeState
+[1754019824] [DEBUG] Creating handshake state as responder
+[1754019824] [DEBUG] Handshake state created successfully
+[1754019824] [DEBUG] Session created successfully for peer: 15d6d33863a41306
+[1754019824] [DEBUG] Starting handle_incoming_handshake for peer: 15d6d33863a41306
+[1754019824] [NOISE_DEBUG] HANDSHAKE_PROCESS - Peer: 15d6d33863a41306 - Processing message of 32 bytes, current state: Handshaking, role: Responder
+[1754019824] [NOISE_DEBUG] HANDSHAKE_READ - Peer: 15d6d33863a41306 - Reading handshake message
+[1754019824] [NOISE_DEBUG] HANDSHAKE_READ_SUCCESS - Peer: 15d6d33863a41306 - Successfully read handshake message
+[1754019824] [NOISE_DEBUG] HANDSHAKE_RESPONSE_NEEDED - Peer: 15d6d33863a41306 - Generating handshake response
+[1754019824] [NOISE_DEBUG] HANDSHAKE_RESPONSE_CREATED - Peer: 15d6d33863a41306 - Response size: 96 bytes
+[1754019824] [DEBUG] Checking if session exists for peer: 15d6d33863a41306 - Result: true
+[1754019824] [DEBUG] Starting handle_incoming_handshake for peer: 15d6d33863a41306
+[1754019824] [NOISE_DEBUG] HANDSHAKE_PROCESS - Peer: 15d6d33863a41306 - Processing message of 64 bytes, current state: Handshaking, role: Responder
+[1754019824] [NOISE_DEBUG] HANDSHAKE_READ - Peer: 15d6d33863a41306 - Reading handshake message
+[1754019824] [NOISE_DEBUG] HANDSHAKE_READ_SUCCESS - Peer: 15d6d33863a41306 - Successfully read handshake message
+[1754019824] [NOISE_DEBUG] HANDSHAKE_COMPLETE - Peer: 15d6d33863a41306 - Handshake is complete, getting transport ciphers
+[1754019824] [NOISE_DEBUG] HANDSHAKE_CIPHERS_SET - Peer: 15d6d33863a41306 - Transport ciphers established
+[1754019824] [NOISE_DEBUG] HANDSHAKE_REMOTE_KEY - Peer: 15d6d33863a41306 - Remote static key: [107, 252, 15, 51, 42, 38, 183, 114]
+[1754019824] [NOISE_DEBUG] HANDSHAKE_HASH_STORED - Peer: 15d6d33863a41306 - Handshake hash: [217, 53, 30, 167, 182, 15, 178, 123, 150, 137, 66, 98, 113, 249, 214, 65]
+[1754019824] [NOISE_DEBUG] HANDSHAKE_ESTABLISHED - Peer: 15d6d33863a41306 - Session established successfully
+[1754019824] [NOISE_DEBUG] FINGERPRINT_CALC - Peer: 15d6d33863a41306 - Calculating fingerprint for remote static key
+[1754019824] [NOISE_DEBUG] FINGERPRINT_CALCULATED - Peer: 15d6d33863a41306 - Fingerprint: 90fe2b89e22c24d6
+[1754019824] [NOISE_DEBUG] FINGERPRINT_STORED - Peer: 15d6d33863a41306 - Fingerprint mappings stored
+[1754019824] [NOISE_DEBUG] CALLBACK_TRIGGERED - Peer: 15d6d33863a41306 - Calling session established callback
+[1754019824] [NOISE_DEBUG] PEER_AUTH_CALLBACK - Peer: 15d6d33863a41306 - Calling peer authenticated callback with fingerprint: 90fe2b89e22c24d6
+[1754019830] [NOISE_DEBUG] DECRYPT_MESSAGE_START - Peer: 15d6d33863a41306 - Starting decryption for message of length: 276
+[1754019830] [NOISE_DEBUG] DECRYPT_MESSAGE_SESSIONS - Peer: 15d6d33863a41306 - Found 1 total sessions
+[1754019830] [NOISE_DEBUG] DECRYPT_MESSAGE_SESSION_FOUND - Peer: 15d6d33863a41306 - Session state: Established
+[1754019830] [NOISE_DEBUG] DECRYPT_MESSAGE_ESTABLISHED - Peer: 15d6d33863a41306 - Session is established, checking receive cipher
+[1754019830] [NOISE_DEBUG] DECRYPT_MESSAGE_CIPHER_FOUND - Peer: 15d6d33863a41306 - Receive cipher found, decrypting message of length: 276
+[1754019830] [NOISE_DEBUG] DECRYPT_MESSAGE_SUCCESS - Peer: 15d6d33863a41306 - Decryption successful, result length: 256
+[1754019831] [NOISE_DEBUG] DECRYPT_MESSAGE_START - Peer: 15d6d33863a41306 - Starting decryption for message of length: 276
+[1754019831] [NOISE_DEBUG] DECRYPT_MESSAGE_SESSIONS - Peer: 15d6d33863a41306 - Found 1 total sessions
+[1754019831] [NOISE_DEBUG] DECRYPT_MESSAGE_SESSION_FOUND - Peer: 15d6d33863a41306 - Session state: Established
+[1754019831] [NOISE_DEBUG] DECRYPT_MESSAGE_ESTABLISHED - Peer: 15d6d33863a41306 - Session is established, checking receive cipher
+[1754019831] [NOISE_DEBUG] DECRYPT_MESSAGE_CIPHER_FOUND - Peer: 15d6d33863a41306 - Receive cipher found, decrypting message of length: 276
+[1754019831] [NOISE_DEBUG] DECRYPT_MESSAGE_CIPHER_ERROR - Peer: 15d6d33863a41306 - Cipher decryption failed: ReplayDetected
+[1754019832] [NOISE_DEBUG] DECRYPT_MESSAGE_START - Peer: 15d6d33863a41306 - Starting decryption for message of length: 276
+[1754019832] [NOISE_DEBUG] DECRYPT_MESSAGE_SESSIONS - Peer: 15d6d33863a41306 - Found 1 total sessions
+[1754019832] [NOISE_DEBUG] DECRYPT_MESSAGE_SESSION_FOUND - Peer: 15d6d33863a41306 - Session state: Established
+[1754019832] [NOISE_DEBUG] DECRYPT_MESSAGE_ESTABLISHED - Peer: 15d6d33863a41306 - Session is established, checking receive cipher
+[1754019832] [NOISE_DEBUG] DECRYPT_MESSAGE_CIPHER_FOUND - Peer: 15d6d33863a41306 - Receive cipher found, decrypting message of length: 276
+[1754019832] [NOISE_DEBUG] DECRYPT_MESSAGE_CIPHER_ERROR - Peer: 15d6d33863a41306 - Cipher decryption failed: ReplayDetected
+[1754019834] [NOISE_DEBUG] DECRYPT_MESSAGE_START - Peer: 15d6d33863a41306 - Starting decryption for message of length: 276
+[1754019834] [NOISE_DEBUG] DECRYPT_MESSAGE_SESSIONS - Peer: 15d6d33863a41306 - Found 1 total sessions
+[1754019834] [NOISE_DEBUG] DECRYPT_MESSAGE_SESSION_FOUND - Peer: 15d6d33863a41306 - Session state: Established
+[1754019834] [NOISE_DEBUG] DECRYPT_MESSAGE_ESTABLISHED - Peer: 15d6d33863a41306 - Session is established, checking receive cipher
+[1754019834] [NOISE_DEBUG] DECRYPT_MESSAGE_CIPHER_FOUND - Peer: 15d6d33863a41306 - Receive cipher found, decrypting message of length: 276
+[1754019834] [NOISE_DEBUG] DECRYPT_MESSAGE_CIPHER_ERROR - Peer: 15d6d33863a41306 - Cipher decryption failed: ReplayDetected
+[1754019846] [NOISE_DEBUG] ENCRYPT_MESSAGE_START - Peer: 15d6d33863a41306 - Starting encryption for message of length: 65
+[1754019846] [NOISE_DEBUG] ENCRYPT_MESSAGE_SESSIONS - Peer: 15d6d33863a41306 - Found 1 total sessions
+[1754019846] [NOISE_DEBUG] ENCRYPT_MESSAGE_SESSION_FOUND - Peer: 15d6d33863a41306 - Session state: Established
+[1754019846] [NOISE_DEBUG] ENCRYPT_MESSAGE_ESTABLISHED - Peer: 15d6d33863a41306 - Session is established, checking send cipher
+[1754019846] [NOISE_DEBUG] ENCRYPT_MESSAGE_CIPHER_FOUND - Peer: 15d6d33863a41306 - Send cipher found, encrypting message of length: 65
+[1754019846] [NOISE_DEBUG] ENCRYPT_MESSAGE_SUCCESS - Peer: 15d6d33863a41306 - Encryption successful, result length: 85
+[1754019873] [NOISE_DEBUG] DECRYPT_MESSAGE_START - Peer: 15d6d33863a41306 - Starting decryption for message of length: 276
+[1754019873] [NOISE_DEBUG] DECRYPT_MESSAGE_SESSIONS - Peer: 15d6d33863a41306 - Found 1 total sessions
+[1754019873] [NOISE_DEBUG] DECRYPT_MESSAGE_SESSION_FOUND - Peer: 15d6d33863a41306 - Session state: Established
+[1754019873] [NOISE_DEBUG] DECRYPT_MESSAGE_ESTABLISHED - Peer: 15d6d33863a41306 - Session is established, checking receive cipher
+[1754019873] [NOISE_DEBUG] DECRYPT_MESSAGE_CIPHER_FOUND - Peer: 15d6d33863a41306 - Receive cipher found, decrypting message of length: 276
+[1754019873] [NOISE_DEBUG] DECRYPT_MESSAGE_CIPHER_ERROR - Peer: 15d6d33863a41306 - Cipher decryption failed: DecryptionFailed
+[1754019874] [NOISE_DEBUG] DECRYPT_MESSAGE_START - Peer: 15d6d33863a41306 - Starting decryption for message of length: 276
+[1754019874] [NOISE_DEBUG] DECRYPT_MESSAGE_SESSIONS - Peer: 15d6d33863a41306 - Found 1 total sessions
+[1754019874] [NOISE_DEBUG] DECRYPT_MESSAGE_SESSION_FOUND - Peer: 15d6d33863a41306 - Session state: Established
+[1754019874] [NOISE_DEBUG] DECRYPT_MESSAGE_ESTABLISHED - Peer: 15d6d33863a41306 - Session is established, checking receive cipher
+[1754019874] [NOISE_DEBUG] DECRYPT_MESSAGE_CIPHER_FOUND - Peer: 15d6d33863a41306 - Receive cipher found, decrypting message of length: 276
+[1754019874] [NOISE_DEBUG] DECRYPT_MESSAGE_CIPHER_ERROR - Peer: 15d6d33863a41306 - Cipher decryption failed: DecryptionFailed
+[1754019875] [NOISE_DEBUG] DECRYPT_MESSAGE_START - Peer: 15d6d33863a41306 - Starting decryption for message of length: 276
+[1754019875] [NOISE_DEBUG] DECRYPT_MESSAGE_SESSIONS - Peer: 15d6d33863a41306 - Found 1 total sessions
+[1754019875] [NOISE_DEBUG] DECRYPT_MESSAGE_SESSION_FOUND - Peer: 15d6d33863a41306 - Session state: Established
+[1754019875] [NOISE_DEBUG] DECRYPT_MESSAGE_ESTABLISHED - Peer: 15d6d33863a41306 - Session is established, checking receive cipher
+[1754019875] [NOISE_DEBUG] DECRYPT_MESSAGE_CIPHER_FOUND - Peer: 15d6d33863a41306 - Receive cipher found, decrypting message of length: 276
+[1754019875] [NOISE_DEBUG] DECRYPT_MESSAGE_CIPHER_ERROR - Peer: 15d6d33863a41306 - Cipher decryption failed: DecryptionFailed
+[1754019877] [NOISE_DEBUG] DECRYPT_MESSAGE_START - Peer: 15d6d33863a41306 - Starting decryption for message of length: 276
+[1754019877] [NOISE_DEBUG] DECRYPT_MESSAGE_SESSIONS - Peer: 15d6d33863a41306 - Found 1 total sessions
+[1754019877] [NOISE_DEBUG] DECRYPT_MESSAGE_SESSION_FOUND - Peer: 15d6d33863a41306 - Session state: Established
+[1754019877] [NOISE_DEBUG] DECRYPT_MESSAGE_ESTABLISHED - Peer: 15d6d33863a41306 - Session is established, checking receive cipher
+[1754019877] [NOISE_DEBUG] DECRYPT_MESSAGE_CIPHER_FOUND - Peer: 15d6d33863a41306 - Receive cipher found, decrypting message of length: 276
+[1754019877] [NOISE_DEBUG] DECRYPT_MESSAGE_CIPHER_ERROR - Peer: 15d6d33863a41306 - Cipher decryption failed: DecryptionFailed
+[1754019882] [NOISE_DEBUG] DECRYPT_MESSAGE_START - Peer: 15d6d33863a41306 - Starting decryption for message of length: 276
+[1754019882] [NOISE_DEBUG] DECRYPT_MESSAGE_SESSIONS - Peer: 15d6d33863a41306 - Found 1 total sessions
+[1754019882] [NOISE_DEBUG] DECRYPT_MESSAGE_SESSION_FOUND - Peer: 15d6d33863a41306 - Session state: Established
+[1754019882] [NOISE_DEBUG] DECRYPT_MESSAGE_ESTABLISHED - Peer: 15d6d33863a41306 - Session is established, checking receive cipher
+[1754019882] [NOISE_DEBUG] DECRYPT_MESSAGE_CIPHER_FOUND - Peer: 15d6d33863a41306 - Receive cipher found, decrypting message of length: 276
+[1754019882] [NOISE_DEBUG] DECRYPT_MESSAGE_CIPHER_ERROR - Peer: 15d6d33863a41306 - Cipher decryption failed: DecryptionFailed
+[1754019883] [NOISE_DEBUG] DECRYPT_MESSAGE_START - Peer: 15d6d33863a41306 - Starting decryption for message of length: 276
+[1754019883] [NOISE_DEBUG] DECRYPT_MESSAGE_SESSIONS - Peer: 15d6d33863a41306 - Found 1 total sessions
+[1754019883] [NOISE_DEBUG] DECRYPT_MESSAGE_SESSION_FOUND - Peer: 15d6d33863a41306 - Session state: Established
+[1754019883] [NOISE_DEBUG] DECRYPT_MESSAGE_ESTABLISHED - Peer: 15d6d33863a41306 - Session is established, checking receive cipher
+[1754019883] [NOISE_DEBUG] DECRYPT_MESSAGE_CIPHER_FOUND - Peer: 15d6d33863a41306 - Receive cipher found, decrypting message of length: 276
+[1754019883] [NOISE_DEBUG] DECRYPT_MESSAGE_CIPHER_ERROR - Peer: 15d6d33863a41306 - Cipher decryption failed: DecryptionFailed
+[1754019883] [NOISE_DEBUG] DECRYPT_MESSAGE_START - Peer: 15d6d33863a41306 - Starting decryption for message of length: 276
+[1754019883] [NOISE_DEBUG] DECRYPT_MESSAGE_SESSIONS - Peer: 15d6d33863a41306 - Found 1 total sessions
+[1754019883] [NOISE_DEBUG] DECRYPT_MESSAGE_SESSION_FOUND - Peer: 15d6d33863a41306 - Session state: Established
+[1754019883] [NOISE_DEBUG] DECRYPT_MESSAGE_ESTABLISHED - Peer: 15d6d33863a41306 - Session is established, checking receive cipher
+[1754019883] [NOISE_DEBUG] DECRYPT_MESSAGE_CIPHER_FOUND - Peer: 15d6d33863a41306 - Receive cipher found, decrypting message of length: 276
+[1754019883] [NOISE_DEBUG] DECRYPT_MESSAGE_CIPHER_ERROR - Peer: 15d6d33863a41306 - Cipher decryption failed: DecryptionFailed
+[1754019885] [NOISE_DEBUG] DECRYPT_MESSAGE_START - Peer: 15d6d33863a41306 - Starting decryption for message of length: 276
+[1754019885] [NOISE_DEBUG] DECRYPT_MESSAGE_SESSIONS - Peer: 15d6d33863a41306 - Found 1 total sessions
+[1754019885] [NOISE_DEBUG] DECRYPT_MESSAGE_SESSION_FOUND - Peer: 15d6d33863a41306 - Session state: Established
+[1754019885] [NOISE_DEBUG] DECRYPT_MESSAGE_ESTABLISHED - Peer: 15d6d33863a41306 - Session is established, checking receive cipher
+[1754019885] [NOISE_DEBUG] DECRYPT_MESSAGE_CIPHER_FOUND - Peer: 15d6d33863a41306 - Receive cipher found, decrypting message of length: 276
+[1754019885] [NOISE_DEBUG] DECRYPT_MESSAGE_CIPHER_ERROR - Peer: 15d6d33863a41306 - Cipher decryption failed: DecryptionFailed
+[1754019902] [NOISE_DEBUG] DECRYPT_MESSAGE_START - Peer: 15d6d33863a41306 - Starting decryption for message of length: 276
+[1754019902] [NOISE_DEBUG] DECRYPT_MESSAGE_SESSIONS - Peer: 15d6d33863a41306 - Found 1 total sessions
+[1754019902] [NOISE_DEBUG] DECRYPT_MESSAGE_SESSION_FOUND - Peer: 15d6d33863a41306 - Session state: Established
+[1754019902] [NOISE_DEBUG] DECRYPT_MESSAGE_ESTABLISHED - Peer: 15d6d33863a41306 - Session is established, checking receive cipher
+[1754019902] [NOISE_DEBUG] DECRYPT_MESSAGE_CIPHER_FOUND - Peer: 15d6d33863a41306 - Receive cipher found, decrypting message of length: 276
+[1754019902] [NOISE_DEBUG] DECRYPT_MESSAGE_CIPHER_ERROR - Peer: 15d6d33863a41306 - Cipher decryption failed: DecryptionFailed
+[1754019903] [NOISE_DEBUG] DECRYPT_MESSAGE_START - Peer: 15d6d33863a41306 - Starting decryption for message of length: 276
+[1754019903] [NOISE_DEBUG] DECRYPT_MESSAGE_SESSIONS - Peer: 15d6d33863a41306 - Found 1 total sessions
+[1754019903] [NOISE_DEBUG] DECRYPT_MESSAGE_SESSION_FOUND - Peer: 15d6d33863a41306 - Session state: Established
+[1754019903] [NOISE_DEBUG] DECRYPT_MESSAGE_ESTABLISHED - Peer: 15d6d33863a41306 - Session is established, checking receive cipher
+[1754019903] [NOISE_DEBUG] DECRYPT_MESSAGE_CIPHER_FOUND - Peer: 15d6d33863a41306 - Receive cipher found, decrypting message of length: 276
+[1754019903] [NOISE_DEBUG] DECRYPT_MESSAGE_CIPHER_ERROR - Peer: 15d6d33863a41306 - Cipher decryption failed: DecryptionFailed
+[1754019904] [NOISE_DEBUG] DECRYPT_MESSAGE_START - Peer: 15d6d33863a41306 - Starting decryption for message of length: 276
+[1754019904] [NOISE_DEBUG] DECRYPT_MESSAGE_SESSIONS - Peer: 15d6d33863a41306 - Found 1 total sessions
+[1754019904] [NOISE_DEBUG] DECRYPT_MESSAGE_SESSION_FOUND - Peer: 15d6d33863a41306 - Session state: Established
+[1754019904] [NOISE_DEBUG] DECRYPT_MESSAGE_ESTABLISHED - Peer: 15d6d33863a41306 - Session is established, checking receive cipher
+[1754019904] [NOISE_DEBUG] DECRYPT_MESSAGE_CIPHER_FOUND - Peer: 15d6d33863a41306 - Receive cipher found, decrypting message of length: 276
+[1754019904] [NOISE_DEBUG] DECRYPT_MESSAGE_CIPHER_ERROR - Peer: 15d6d33863a41306 - Cipher decryption failed: DecryptionFailed
+[1754019905] [NOISE_DEBUG] ENCRYPT_MESSAGE_START - Peer: 15d6d33863a41306 - Starting encryption for message of length: 68
+[1754019905] [NOISE_DEBUG] ENCRYPT_MESSAGE_SESSIONS - Peer: 15d6d33863a41306 - Found 1 total sessions
+[1754019905] [NOISE_DEBUG] ENCRYPT_MESSAGE_SESSION_FOUND - Peer: 15d6d33863a41306 - Session state: Established
+[1754019905] [NOISE_DEBUG] ENCRYPT_MESSAGE_ESTABLISHED - Peer: 15d6d33863a41306 - Session is established, checking send cipher
+[1754019905] [NOISE_DEBUG] ENCRYPT_MESSAGE_CIPHER_FOUND - Peer: 15d6d33863a41306 - Send cipher found, encrypting message of length: 68
+[1754019905] [NOISE_DEBUG] ENCRYPT_MESSAGE_SUCCESS - Peer: 15d6d33863a41306 - Encryption successful, result length: 88
+[1754019906] [NOISE_DEBUG] DECRYPT_MESSAGE_START - Peer: 15d6d33863a41306 - Starting decryption for message of length: 276
+[1754019906] [NOISE_DEBUG] DECRYPT_MESSAGE_SESSIONS - Peer: 15d6d33863a41306 - Found 1 total sessions
+[1754019906] [NOISE_DEBUG] DECRYPT_MESSAGE_SESSION_FOUND - Peer: 15d6d33863a41306 - Session state: Established
+[1754019906] [NOISE_DEBUG] DECRYPT_MESSAGE_ESTABLISHED - Peer: 15d6d33863a41306 - Session is established, checking receive cipher
+[1754019906] [NOISE_DEBUG] DECRYPT_MESSAGE_CIPHER_FOUND - Peer: 15d6d33863a41306 - Receive cipher found, decrypting message of length: 276
+[1754019906] [NOISE_DEBUG] DECRYPT_MESSAGE_CIPHER_ERROR - Peer: 15d6d33863a41306 - Cipher decryption failed: DecryptionFailed

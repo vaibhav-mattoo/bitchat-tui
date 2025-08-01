@@ -187,38 +187,30 @@ impl NoiseCipherState {
             return true; // Always accept newer nonces
         }
 
-        let offset = (self.highest_received_nonce - received_nonce) as usize;
-        let byte_index = offset / 8;
-        let bit_index = offset % 8;
-
-        (self.replay_window.contains(&received_nonce)) // Check if nonce is in the window
+        // For nonces within the window, they're valid if NOT already seen
+        !self.replay_window.contains(&received_nonce)
     }
 
     /// Mark nonce as seen in replay window
     fn mark_nonce_as_seen(&mut self, received_nonce: u64) {
         if received_nonce > self.highest_received_nonce {
-            let shift = (received_nonce - self.highest_received_nonce) as usize;
+            // Slide the window forward
+            let shift = received_nonce - self.highest_received_nonce;
 
-            if shift >= REPLAY_WINDOW_SIZE {
+            if shift >= REPLAY_WINDOW_SIZE as u64 {
                 // Clear entire window - shift is too large
                 self.replay_window.clear();
             } else {
-                // Shift window right by `shift` bits
-                let mut new_window: std::collections::HashSet<u64> =
-                    std::collections::HashSet::new();
-                for nonce in self.replay_window.iter() {
-                    if *nonce + shift as u64 > self.highest_received_nonce {
-                        new_window.insert(*nonce + shift as u64);
-                    }
-                }
-                self.replay_window = new_window;
+                // Remove nonces that are now too old
+                self.replay_window
+                    .retain(|&nonce| nonce + REPLAY_WINDOW_SIZE as u64 > received_nonce);
             }
 
             self.highest_received_nonce = received_nonce;
-            self.replay_window.insert(received_nonce); // Mark most recent nonce as seen
-        } else {
-            self.replay_window.insert(received_nonce);
         }
+
+        // Mark this nonce as seen
+        self.replay_window.insert(received_nonce);
     }
 
     /// Extract nonce from combined payload <nonce><ciphertext>
@@ -274,7 +266,7 @@ impl NoiseCipherState {
             );
 
             let current_nonce = self.nonce;
-            
+
             // Create 12-byte nonce with counter in bytes 4-12 (little-endian like Swift)
             let mut nonce_bytes = [0u8; 12];
             let nonce_le_bytes = current_nonce.to_le_bytes();
@@ -300,7 +292,7 @@ impl NoiseCipherState {
                             ciphertext.len()
                         ),
                     );
-                    
+
                     // For transport messages with extracted nonce, prepend nonce to ciphertext
                     let result = if self.use_extracted_nonce {
                         let mut result = self.nonce_to_bytes(self.nonce);
@@ -316,7 +308,7 @@ impl NoiseCipherState {
                     } else {
                         ciphertext
                     };
-                    
+
                     self.nonce += 1;
                     Ok(result)
                 }
@@ -569,8 +561,18 @@ impl NoiseSymmetricState {
         let temp_key1 = ChaChaKey::clone_from_slice(&output[0]);
         let temp_key2 = ChaChaKey::clone_from_slice(&output[1]);
 
-        let c1 = NoiseCipherState::new_with_key(temp_key1, true);
-        let c2 = NoiseCipherState::new_with_key(temp_key2, true);
+        // Transport ciphers MUST use extracted nonce and start fresh
+        let mut c1 = NoiseCipherState::new_with_key(temp_key1, true);
+        let mut c2 = NoiseCipherState::new_with_key(temp_key2, true);
+
+        // Reset nonce counters and replay windows for transport mode
+        c1.nonce = 0;
+        c1.replay_window.clear();
+        c1.highest_received_nonce = 0;
+
+        c2.nonce = 0;
+        c2.replay_window.clear();
+        c2.highest_received_nonce = 0;
 
         (c1, c2)
     }
@@ -987,9 +989,9 @@ impl NoiseHandshakeState {
                     );
                 }
 
-                                NoiseMessagePattern::S => {
+                NoiseMessagePattern::S => {
                     log_noise_protocol_event("READ_MESSAGE_S", "Reading static key");
-                    
+
                     // Read static key (may be encrypted)
                     // Swift sends unencrypted static key (32 bytes) before establishing cipher key
                     let key_length = if self.symmetric_state.has_cipher_key() {
@@ -997,7 +999,7 @@ impl NoiseHandshakeState {
                     } else {
                         32
                     }; // 32 + 16 byte tag if encrypted
-                    
+
                     log_noise_protocol_event(
                         "READ_MESSAGE_S_CHECK",
                         &format!(
@@ -1007,7 +1009,7 @@ impl NoiseHandshakeState {
                             self.symmetric_state.has_cipher_key()
                         ),
                     );
-                    
+
                     if offset + key_length > message.len() {
                         log_noise_protocol_event(
                             "READ_MESSAGE_S_ERROR",
@@ -1381,4 +1383,3 @@ impl NoiseHandshakeState {
         }
     }
 }
-
