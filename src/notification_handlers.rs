@@ -1458,34 +1458,67 @@ pub async fn handle_noise_encrypted_message(
                 decrypted_message.len()
             ));
 
-            // Parse the decrypted message
-            write_noise_debug_log("[DEBUG] About to parse decrypted message");
-            match String::from_utf8(decrypted_message) {
-                Ok(message_text) => {
+            // Parse the decrypted message as a BitchatPacket
+            write_noise_debug_log("[DEBUG] About to parse decrypted message as BitchatPacket");
+            match crate::packet_parser::parse_bitchat_packet(&decrypted_message) {
+                Ok(inner_packet) => {
                     write_noise_debug_log(&format!(
-                        "[DEBUG] Successfully parsed message: '{}'",
-                        message_text
+                        "[DEBUG] Successfully parsed inner packet: {:?}",
+                        inner_packet.msg_type
                     ));
 
-                    // Get peer nickname
-                    let peer_nickname = peers_lock
-                        .get(&packet.sender_id_str)
-                        .and_then(|peer| peer.nickname.as_ref())
-                        .unwrap_or(&packet.sender_id_str);
+                    // Handle the inner packet based on its type
+                    match inner_packet.msg_type {
+                        crate::data_structures::MessageType::Message => {
+                            // Extract the message text from the payload
+                            match String::from_utf8(inner_packet.payload) {
+                                Ok(message_text) => {
+                                    write_noise_debug_log(&format!(
+                                        "[DEBUG] Successfully extracted message text: '{}'",
+                                        message_text
+                                    ));
 
-                    write_noise_debug_log(&format!(
-                        "[DEBUG] Displaying message from peer: {}",
-                        peer_nickname
-                    ));
+                                    // Get peer nickname
+                                    let peer_nickname = peers_lock
+                                        .get(&packet.sender_id_str)
+                                        .and_then(|peer| peer.nickname.as_ref())
+                                        .unwrap_or(&packet.sender_id_str);
 
-                    // Display the message
-                    let _ = ui_tx
-                        .send(format!("[DM] {}: {}\n> ", peer_nickname, message_text))
-                        .await;
+                                    write_noise_debug_log(&format!(
+                                        "[DEBUG] Displaying message from peer: {}",
+                                        peer_nickname
+                                    ));
+
+                                    // Display the message
+                                    let _ = ui_tx
+                                        .send(format!("[DM] {}: {}\n> ", peer_nickname, message_text))
+                                        .await;
+                                }
+                                Err(e) => {
+                                    write_noise_debug_log(&format!(
+                                        "[DEBUG] Failed to parse inner message payload as UTF-8: {:?}",
+                                        e
+                                    ));
+                                    let _ = ui_tx
+                                        .send(format!("[!] Failed to parse inner message: {}\n> ", e))
+                                        .await;
+                                }
+                            }
+                        }
+                        _ => {
+                            write_noise_debug_log(&format!(
+                                "[DEBUG] Unsupported inner packet type: {:?}",
+                                inner_packet.msg_type
+                            ));
+                            let _ = ui_tx
+                                .send(format!("[!] Unsupported inner packet type: {:?}\n> ", inner_packet.msg_type))
+                                .await;
+                        }
+                    }
                 }
                 Err(e) => {
                     write_noise_debug_log(&format!(
-                        "[DEBUG] Failed to parse decrypted message as UTF-8: {:?}",
+                        "[DEBUG] Failed to parse decrypted message as BitchatPacket: {}",
                         e
                     ));
                     let _ = ui_tx

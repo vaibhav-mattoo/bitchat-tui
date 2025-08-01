@@ -223,7 +223,7 @@ impl NoiseCipherState {
             return None;
         }
 
-        // Extract 4-byte nonce (little-endian like Swift)
+        // Extract 4-byte nonce (little-endian to match Swift)
         let nonce_data = &combined_payload[..NONCE_SIZE_BYTES];
         let mut extracted_nonce: u64 = 0;
         for (i, &byte) in nonce_data.iter().enumerate() {
@@ -236,12 +236,12 @@ impl NoiseCipherState {
         Some((extracted_nonce, ciphertext))
     }
 
-    /// Convert nonce to 4-byte array (little-endian like Swift)
+    /// Convert nonce to 4-byte array (little-endian to match Swift)
     fn nonce_to_bytes(&self, nonce: u64) -> Vec<u8> {
         let mut bytes = vec![0u8; NONCE_SIZE_BYTES];
         let nonce_le = nonce.to_le_bytes();
         // Copy only the first 4 bytes from the 8-byte u64
-        bytes.copy_from_slice(&nonce_le[..4]);
+        bytes.copy_from_slice(&nonce_le[..NONCE_SIZE_BYTES]);
         bytes
     }
 
@@ -338,21 +338,12 @@ impl NoiseCipherState {
                     ciphertext.len()
                 ),
             );
-            log_noise_protocol_event("CIPHER_DECRYPT_KEY", &format!("Key length: {}", key.len()));
-            log_noise_protocol_event(
-                "CIPHER_DECRYPT_NONCE",
-                &format!("Current nonce: {}", self.nonce),
-            );
-            log_noise_protocol_event(
-                "CIPHER_DECRYPT_ASSOCIATED_DATA",
-                &format!("Associated data length: {}", associated_data.len()),
-            );
 
             let (nonce, encrypted_payload): (u64, Vec<u8>) = if self.use_extracted_nonce {
                 match self.extract_nonce_from_ciphertext_payload(ciphertext) {
                     Some((n, payload)) => {
-                        // FIXED: Add nonce validation for replay protection
-                        if !self.is_valid_nonce(n) {
+                        // FIXED: Only validate nonce for non-zero nonces in transport mode
+                        if n > 0 && !self.is_valid_nonce(n) {
                             log_noise_protocol_event(
                                 "CIPHER_DECRYPT_REPLAY_DETECTED",
                                 &format!("Replay attack detected: nonce {} rejected", n),
@@ -367,26 +358,19 @@ impl NoiseCipherState {
                 (self.nonce, ciphertext.to_vec())
             };
 
-            // Create 12-byte nonce with counter in bytes 4-12 (little-endian like Swift)
+            // Create 12-byte nonce with counter in bytes 4-12 (little-endian)
             let mut nonce_bytes = [0u8; 12];
             let nonce_le_bytes = nonce.to_le_bytes();
             nonce_bytes[4..12].copy_from_slice(&nonce_le_bytes);
             let nonce_array = GenericArray::clone_from_slice(&nonce_bytes);
-            log_noise_protocol_event(
-                "CIPHER_DECRYPT_PAYLOAD",
-                &format!("Encrypted payload length: {}", encrypted_payload.len()),
-            );
 
-            // Create cipher
+            // Create cipher and decrypt
             let cipher = ChaCha20Poly1305::new(key.into());
-
-            // Create payload with associated data
             let payload = Payload {
                 msg: &encrypted_payload,
                 aad: associated_data,
             };
 
-            // Decrypt using the payload
             match cipher.decrypt(&nonce_array, payload) {
                 Ok(plaintext) => {
                     log_noise_protocol_event(
@@ -397,10 +381,10 @@ impl NoiseCipherState {
                         ),
                     );
 
-                    if self.use_extracted_nonce {
-                        // Update replay window after successful decryption
+                    if self.use_extracted_nonce && nonce > 0 {
+                        // Update replay window after successful decryption (but only for non-zero nonces)
                         self.mark_nonce_as_seen(nonce);
-                    } else {
+                    } else if !self.use_extracted_nonce {
                         self.nonce += 1;
                     }
                     Ok(plaintext)
@@ -1248,11 +1232,11 @@ impl NoiseHandshakeState {
 
         let (c1, c2) = self.symmetric_state.split();
 
-        // Initiator uses c1 for sending, c2 for receiving
-        // Responder uses c2 for sending, c1 for receiving
+        // FIXED: Correct cipher assignment - initiator uses c1 for send, c2 for receive
+        // Responder uses c2 for send, c1 for receive
         Ok(match self.role {
-            NoiseRole::Initiator => (c1, c2),
-            NoiseRole::Responder => (c2, c1),
+            NoiseRole::Initiator => (c1, c2), // send_cipher, receive_cipher
+            NoiseRole::Responder => (c2, c1), // send_cipher, receive_cipher  
         })
     }
 
