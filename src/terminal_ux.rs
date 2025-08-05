@@ -155,6 +155,13 @@ pub fn get_help_text() -> String {
         "  /block @user           Block a user",
         "  /block                   List blocked users",
         "  /unblock @user         Unblock a user\n",
+        "▶ Performance Testing",
+        "  /spam_status             Show simulation status",
+        "  /spam_flood <n> [ms]     Send N messages with delay",
+        "  /spam_fragment <n>       Send N incomplete fragments",
+        "  /spam_bloom <n>          Send N unique message IDs",
+        "  /spam_channels <n>       Create N test channels",
+        "  /spam_stop               Stop active simulations\n",
         "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
     ].join("\n")
 }

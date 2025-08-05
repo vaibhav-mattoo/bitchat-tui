@@ -65,7 +65,9 @@ use command_handling::{
     handle_join_command, handle_exit_command, handle_reply_command, handle_public_command,
     handle_online_command, handle_channels_command, handle_dm_command, handle_block_command,
     handle_unblock_command, handle_clear_command, handle_leave_command,
-    handle_pass_command, handle_transfer_command, handle_fingerprint_command
+    handle_pass_command, handle_transfer_command, handle_fingerprint_command,
+    handle_spam_flood_command, handle_spam_fragment_command, handle_spam_bloom_command,
+    handle_spam_channels_command, handle_spam_status_command
 };
 use message_handlers::{handle_private_dm_message, handle_regular_message};
 use notification_handlers::{
@@ -750,6 +752,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
             if handle_transfer_command(&line, chat_context.as_ref().unwrap(), channel_creators.as_mut().unwrap(), password_protected_channels.as_ref().unwrap(), channel_keys.as_ref().unwrap(), &my_peer_id, peers.as_ref().unwrap(), peripheral.as_ref().unwrap(), cmd_char.as_ref().unwrap(), ui_tx.clone()).await { continue; }
             if handle_fingerprint_command(&line, encryption_service.as_ref().unwrap(), ui_tx.clone()).await { continue; }
+            
+            // Spam simulation commands
+            if handle_spam_flood_command(&line, &nickname, &my_peer_id, chat_context.as_ref().unwrap(), password_protected_channels.as_ref().unwrap(), channel_keys.as_mut().unwrap(), encryption_service.as_ref().unwrap(), delivery_tracker.as_mut().unwrap(), peripheral.as_ref().unwrap(), cmd_char.as_ref().unwrap(), ui_tx.clone()).await { continue; }
+            if handle_spam_fragment_command(&line, &my_peer_id, peripheral.as_ref().unwrap(), cmd_char.as_ref().unwrap(), ui_tx.clone()).await { continue; }
+            if handle_spam_bloom_command(&line, &nickname, &my_peer_id, peripheral.as_ref().unwrap(), cmd_char.as_ref().unwrap(), ui_tx.clone()).await { continue; }
+            if handle_spam_channels_command(&line, &my_peer_id, peripheral.as_ref().unwrap(), cmd_char.as_ref().unwrap(), ui_tx.clone()).await { continue; }
+            if handle_spam_status_command(&line, ui_tx.clone()).await { continue; }
+            
             if line.starts_with("/") {
                 let unknown_cmd = line.split_whitespace().next().unwrap_or("");
                 let unknown_cmd_msg = format!("⚠  Unknown command: {}", unknown_cmd);
