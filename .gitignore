@@ -57,3 +57,6 @@ compile_commands.json
 # Added by cargo
 
 /target
+
+#nix
+/result

@@ -60,6 +60,13 @@ paru -S bitchat-tui
 ```
 
 
+### From Nix Flake
+
+```
+nix run github:vaibhav-mattoo/bitchat-tui#bitchat-tui
+```
+
+
 ### From Source
 
 ```
@@ -82,6 +89,7 @@ cargo install --path .
     - [From Cargo](#from-cargo)
     - [From Homebrew (macOS & Linux)](#from-homebrew-macos--linux)
     - [From AUR (Arch Linux)](#from-aur-arch-linux)
+    - [From Nix Flake](#from-nix-flake)
     - [From Source](#from-source)
 - [Quick Start](#-quick-start)
 - [Features](#-features)
