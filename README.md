@@ -273,6 +273,34 @@ chmod +x uninstall.sh
 ./uninstall.sh
 ```
 
+## 🔧 Troubleshooting
+
+### Windows Installation Issues
+
+#### "linker link.exe not found" or "the msvc targets depend on the msvc linker"
+This means the Microsoft C++ Build Tools are not installed. Download them from https://visualstudio.microsoft.com/visual-cpp-build-tools/, run the installer, check "Desktop development with C++", and reboot after installation completes.
+
+#### Install script doesn't work on Windows
+Make sure you're using Git Bash, MSYS2, or Cygwin terminals - not the standard Windows Command Prompt. The install script requires a Unix-like shell environment.
+
+#### Keyboard presses are duplicated
+This is a known issue on Windows 11. As a workaround, try running the app in a different terminal emulator (Git Bash, Windows Terminal, etc.).
+
+### macOS Issues
+
+#### Bluetooth permissions denied
+Go to System Settings > Privacy & Security > Bluetooth and ensure your terminal app has Bluetooth access.
+
+### Linux Issues
+
+#### "bluetooth: adapter not available"
+Make sure the Bluetooth service is running: `sudo systemctl start bluetooth`
+
+### Building from Source
+
+#### cargo install fails
+Ensure Rust is installed: `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`
+
 ## 📄 License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
