@@ -1,16 +1,16 @@
+use crate::binary_protocol_utils::hex_encode;
+use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use std::collections::{HashMap, HashSet};
 use std::time::SystemTime;
-use serde::{Serialize, Deserialize};
 use uuid::Uuid;
-use crate::binary_protocol_utils::{hex_encode, hex_decode};
-use sha2::{Sha256, Digest};
 
 // Debug levels
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
 pub enum DebugLevel {
-    Clean = 0,    // Default - minimal output
-    Basic = 1,    // Connection info, key exchanges
-    Full = 2,     // All debug output
+    Clean = 0, // Default - minimal output
+    Basic = 1, // Connection info, key exchanges
+    Full = 2,  // All debug output
 }
 
 // Global debug level
@@ -47,7 +47,8 @@ pub const VERSION: &str = "v1.0.0";
 
 pub const BITCHAT_SERVICE_UUID: Uuid = Uuid::from_u128(0xF47B5E2D_4A9E_4C5A_9B3F_8E1D2C3A4B5C);
 
-pub const BITCHAT_CHARACTERISTIC_UUID: Uuid = Uuid::from_u128(0xA1B2C3D4_E5F6_4A5B_8C9D_0E1F2A3B4C5D);
+pub const BITCHAT_CHARACTERISTIC_UUID: Uuid =
+    Uuid::from_u128(0xA1B2C3D4_E5F6_4A5B_8C9D_0E1F2A3B4C5D);
 
 // Cover traffic prefix used by iOS for dummy messages
 pub const COVER_TRAFFIC_PREFIX: &str = "☂DUMMY☂";
@@ -69,7 +70,7 @@ pub const MSG_FLAG_HAS_CHANNEL: u8 = 0x40;
 pub const MSG_FLAG_IS_ENCRYPTED: u8 = 0x80;
 
 #[allow(dead_code)]
-pub const SIGNATURE_SIZE: usize = 64;  // Ed25519 signature size
+pub const SIGNATURE_SIZE: usize = 64; // Ed25519 signature size
 
 // Swift's SpecialRecipients.broadcast = Data(repeating: 0xFF, count: 8)
 pub const BROADCAST_RECIPIENT: [u8; 8] = [0xFF; 8];
@@ -79,21 +80,21 @@ pub const BROADCAST_RECIPIENT: [u8; 8] = [0xFF; 8];
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum EncryptionStatus {
-    None,               // Failed or incompatible
-    NoHandshake,        // No handshake attempted yet
-    NoiseHandshaking,   // Currently establishing
-    NoiseSecured,       // Established but not verified
-    NoiseVerified,      // Established and verified
+    None,             // Failed or incompatible
+    NoHandshake,      // No handshake attempted yet
+    NoiseHandshaking, // Currently establishing
+    NoiseSecured,     // Established but not verified
+    NoiseVerified,    // Established and verified
 }
 
 impl EncryptionStatus {
     pub fn icon(&self) -> Option<&'static str> {
         match self {
-            EncryptionStatus::None => Some("🔒❌"),           // Failed handshake
-            EncryptionStatus::NoHandshake => None,            // No icon when no handshake attempted
+            EncryptionStatus::None => Some("🔒❌"), // Failed handshake
+            EncryptionStatus::NoHandshake => None,  // No icon when no handshake attempted
             EncryptionStatus::NoiseHandshaking => Some("🔄"), // Establishing
-            EncryptionStatus::NoiseSecured => Some("🔒"),     // Encrypted
-            EncryptionStatus::NoiseVerified => Some("🔒✅"),  // Encrypted & Verified
+            EncryptionStatus::NoiseSecured => Some("🔒"), // Encrypted
+            EncryptionStatus::NoiseVerified => Some("🔒✅"), // Encrypted & Verified
         }
     }
 
@@ -110,42 +111,42 @@ impl EncryptionStatus {
 
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub enum MessageType { 
-    Announce = 0x01, 
-    KeyExchange = 0x02, 
+pub enum MessageType {
+    Announce = 0x01,
+    KeyExchange = 0x02,
     Leave = 0x03,
     Message = 0x04,
     FragmentStart = 0x05,
     FragmentContinue = 0x06,
     FragmentEnd = 0x07,
-    ChannelAnnounce = 0x08,      // Channel status announcement (matches Swift v2 code)
-    ChannelRetention = 0x09,     // Channel retention policy (matches Swift v2 code)
-    DeliveryAck = 0x0A,          // Acknowledge message received
-    DeliveryStatusRequest = 0x0B,  // Request delivery status
-    ReadReceipt = 0x0C,          // Message has been read
-    
+    ChannelAnnounce = 0x08, // Channel status announcement (matches Swift v2 code)
+    ChannelRetention = 0x09, // Channel retention policy (matches Swift v2 code)
+    DeliveryAck = 0x0A,     // Acknowledge message received
+    DeliveryStatusRequest = 0x0B, // Request delivery status
+    ReadReceipt = 0x0C,     // Message has been read
+
     // Noise Protocol messages
-    NoiseHandshakeInit = 0x10,   // Noise handshake initiation
-    NoiseHandshakeResp = 0x11,   // Noise handshake response
-    NoiseEncrypted = 0x12,       // Noise encrypted transport message
+    NoiseHandshakeInit = 0x10,    // Noise handshake initiation
+    NoiseHandshakeResp = 0x11,    // Noise handshake response
+    NoiseEncrypted = 0x12,        // Noise encrypted transport message
     NoiseIdentityAnnounce = 0x13, // Announce static public key for discovery
-    
+
     // Protocol version negotiation
-    VersionHello = 0x20,         // Initial version announcement
-    VersionAck = 0x21,           // Version acknowledgment
-    
+    VersionHello = 0x20, // Initial version announcement
+    VersionAck = 0x21,   // Version acknowledgment
+
     // Protocol-level acknowledgments
-    ProtocolAck = 0x22,          // Generic protocol acknowledgment
-    ProtocolNack = 0x23,         // Negative acknowledgment (failure)
-    SystemValidation = 0x24,     // Session validation ping
-    HandshakeRequest = 0x25,     // Request handshake for pending messages
+    ProtocolAck = 0x22,      // Generic protocol acknowledgment
+    ProtocolNack = 0x23,     // Negative acknowledgment (failure)
+    SystemValidation = 0x24, // Session validation ping
+    HandshakeRequest = 0x25, // Request handshake for pending messages
 }
 
 // Peer information
 #[derive(Debug, Clone)]
-pub struct Peer { 
+pub struct Peer {
     pub nickname: Option<String>,
-    pub fingerprint: Option<String>,  // SHA256 hash of Noise static public key
+    pub fingerprint: Option<String>, // SHA256 hash of Noise static public key
     pub last_seen: Option<SystemTime>,
     pub connection_state: PeerConnectionState,
 }
@@ -175,32 +176,35 @@ pub fn calculate_fingerprint(public_key_bytes: &[u8]) -> String {
     let mut hasher = Sha256::new();
     hasher.update(public_key_bytes);
     let result = hasher.finalize();
-    result.iter().map(|b| format!("{:02x}", b)).collect::<String>()
+    result
+        .iter()
+        .map(|b| format!("{:02x}", b))
+        .collect::<String>()
 }
 
 // Packet structure - matches Swift BitchatPacket exactly
 #[derive(Debug)]
-pub struct BitchatPacket { 
-    pub version: u8,                    // Protocol version (1)
-    pub msg_type: MessageType,          // Message type
-    pub sender_id: Vec<u8>,            // Sender ID as binary data (8 bytes)
-    pub sender_id_str: String,          // Sender ID as hex string
-    pub recipient_id: Option<Vec<u8>>,  // Recipient ID as binary data (8 bytes) - optional
+pub struct BitchatPacket {
+    pub version: u8,                      // Protocol version (1)
+    pub msg_type: MessageType,            // Message type
+    pub sender_id: Vec<u8>,               // Sender ID as binary data (8 bytes)
+    pub sender_id_str: String,            // Sender ID as hex string
+    pub recipient_id: Option<Vec<u8>>,    // Recipient ID as binary data (8 bytes) - optional
     pub recipient_id_str: Option<String>, // Recipient ID as hex string - optional
-    pub timestamp: u64,                 // Timestamp in milliseconds
-    pub payload: Vec<u8>,              // Message payload
-    pub signature: Option<Vec<u8>>,    // Optional signature (64 bytes)
-    pub ttl: u8,                       // Time to live
+    pub timestamp: u64,                   // Timestamp in milliseconds
+    pub payload: Vec<u8>,                 // Message payload
+    pub signature: Option<Vec<u8>>,       // Optional signature (64 bytes)
+    pub ttl: u8,                          // Time to live
 }
 
 #[derive(Debug)]
-pub struct BitchatMessage { 
-    pub id: String, 
-    pub sender: String,  // Add sender field
-    pub content: String, 
+pub struct BitchatMessage {
+    pub id: String,
+    pub sender: String, // Add sender field
+    pub content: String,
     pub channel: Option<String>,
     pub is_encrypted: bool,
-    pub encrypted_content: Option<Vec<u8>>,  // Store raw encrypted bytes
+    pub encrypted_content: Option<Vec<u8>>, // Store raw encrypted bytes
 }
 
 // Delivery confirmation pub structures matching iOS
@@ -251,20 +255,28 @@ pub struct HandshakeRequest {
 
 impl HandshakeRequest {
     /// Create a new HandshakeRequest with auto-generated UUID and current timestamp
-    pub fn new(requester_id: String, requester_nickname: String, target_id: String, pending_message_count: u8) -> Self {
-        use uuid::Uuid;
+    pub fn new(
+        requester_id: String,
+        requester_nickname: String,
+        target_id: String,
+        pending_message_count: u8,
+    ) -> Self {
         use std::time::{SystemTime, UNIX_EPOCH};
-        
+        use uuid::Uuid;
+
         Self {
             request_id: Uuid::new_v4().to_string(),
             requester_id,
             requester_nickname,
             target_id,
             pending_message_count,
-            timestamp: SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs(),
+            timestamp: SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_secs(),
         }
     }
-    
+
     /// Private constructor for binary decoding (matches Swift implementation)
     pub(crate) fn from_parts(
         request_id: String,
@@ -377,15 +389,16 @@ impl DeliveryTracker {
             sent_acks: HashSet::new(),
         }
     }
-    
+
     pub fn track_message(&mut self, message_id: String, content: String, is_private: bool) {
-        self.pending_messages.insert(message_id, (content, SystemTime::now(), is_private));
+        self.pending_messages
+            .insert(message_id, (content, SystemTime::now(), is_private));
     }
-    
+
     pub fn mark_delivered(&mut self, message_id: &str) -> bool {
         self.pending_messages.remove(message_id).is_some()
     }
-    
+
     pub fn should_send_ack(&mut self, ack_id: &str) -> bool {
         self.sent_acks.insert(ack_id.to_string())
     }
@@ -393,8 +406,8 @@ impl DeliveryTracker {
 
 // Fragment reassembly tracking - using hex strings as keys (matching Swift)
 pub struct FragmentCollector {
-    pub fragments: HashMap<String, HashMap<u16, Vec<u8>>>,  // fragment_id_hex -> (index -> data)
-    pub metadata: HashMap<String, (u16, u8, String)>,  // fragment_id_hex -> (total, original_type, sender_id)
+    pub fragments: HashMap<String, HashMap<u16, Vec<u8>>>, // fragment_id_hex -> (index -> data)
+    pub metadata: HashMap<String, (u16, u8, String)>, // fragment_id_hex -> (total, original_type, sender_id)
 }
 
 impl FragmentCollector {
@@ -404,61 +417,100 @@ impl FragmentCollector {
             metadata: HashMap::new(),
         }
     }
-    
-    pub fn add_fragment(&mut self, fragment_id: [u8; 8], index: u16, total: u16, original_type: u8, data: Vec<u8>, sender_id: String) -> Option<(Vec<u8>, String)> {
+
+    pub fn add_fragment(
+        &mut self,
+        fragment_id: [u8; 8],
+        index: u16,
+        total: u16,
+        original_type: u8,
+        data: Vec<u8>,
+        sender_id: String,
+    ) -> Option<(Vec<u8>, String)> {
         // Convert fragment ID to hex string (matching Swift's hexEncodedString)
-        let fragment_id_hex = fragment_id.iter().map(|b| format!("{:02x}", b)).collect::<String>();
-        
-        debug_full_println!("[COLLECTOR] Adding fragment {} (index {}/{}) for ID {}", 
-                index + 1, index + 1, total, &fragment_id_hex[..8]);
-        
+        let fragment_id_hex = fragment_id
+            .iter()
+            .map(|b| format!("{:02x}", b))
+            .collect::<String>();
+
+        debug_full_println!(
+            "[COLLECTOR] Adding fragment {} (index {}/{}) for ID {}",
+            index + 1,
+            index + 1,
+            total,
+            &fragment_id_hex[..8]
+        );
+
         // Initialize if first fragment
         if !self.fragments.contains_key(&fragment_id_hex) {
-            debug_full_println!("[COLLECTOR] Creating new fragment collection for ID {}", &fragment_id_hex[..8]);
-            self.fragments.insert(fragment_id_hex.clone(), HashMap::new());
-            self.metadata.insert(fragment_id_hex.clone(), (total, original_type, sender_id.clone()));
+            debug_full_println!(
+                "[COLLECTOR] Creating new fragment collection for ID {}",
+                &fragment_id_hex[..8]
+            );
+            self.fragments
+                .insert(fragment_id_hex.clone(), HashMap::new());
+            self.metadata.insert(
+                fragment_id_hex.clone(),
+                (total, original_type, sender_id.clone()),
+            );
         }
-        
+
         // Add fragment data at index
         if let Some(fragment_map) = self.fragments.get_mut(&fragment_id_hex) {
             fragment_map.insert(index, data);
-            debug_full_println!("[COLLECTOR] Fragment {} stored. Have {}/{} fragments", 
-                    index + 1, fragment_map.len(), total);
-            
+            debug_full_println!(
+                "[COLLECTOR] Fragment {} stored. Have {}/{} fragments",
+                index + 1,
+                fragment_map.len(),
+                total
+            );
+
             // Check if we have all fragments
             if fragment_map.len() == total as usize {
                 debug_full_println!("[COLLECTOR] ✓ All fragments received! Reassembling...");
-                
+
                 // Reassemble in order
                 let mut complete_data = Vec::new();
                 for i in 0..total {
                     if let Some(fragment_data) = fragment_map.get(&i) {
-                        debug_full_println!("[COLLECTOR] Appending fragment {} ({} bytes)", i + 1, fragment_data.len());
+                        debug_full_println!(
+                            "[COLLECTOR] Appending fragment {} ({} bytes)",
+                            i + 1,
+                            fragment_data.len()
+                        );
                         complete_data.extend_from_slice(fragment_data);
                     } else {
                         debug_full_println!("[COLLECTOR] ✗ Missing fragment {}", i + 1);
                         return None;
                     }
                 }
-                
-                debug_full_println!("[COLLECTOR] ✓ Reassembly complete: {} bytes total", complete_data.len());
-                
+
+                debug_full_println!(
+                    "[COLLECTOR] ✓ Reassembly complete: {} bytes total",
+                    complete_data.len()
+                );
+
                 // Get sender from metadata
-                let sender = self.metadata.get(&fragment_id_hex)
+                let sender = self
+                    .metadata
+                    .get(&fragment_id_hex)
                     .map(|(_, _, s)| s.clone())
                     .unwrap_or_else(|| "Unknown".to_string());
-                
+
                 // Clean up
                 self.fragments.remove(&fragment_id_hex);
                 self.metadata.remove(&fragment_id_hex);
-                
+
                 return Some((complete_data, sender));
             } else {
-                debug_full_println!("[COLLECTOR] Waiting for more fragments ({}/{} received)", 
-                        fragment_map.len(), total);
+                debug_full_println!(
+                    "[COLLECTOR] Waiting for more fragments ({}/{} received)",
+                    fragment_map.len(),
+                    total
+                );
             }
         }
-        
+
         None
     }
 }
@@ -470,16 +522,17 @@ impl ProtocolVersion {
     pub const CURRENT: u8 = 1;
     pub const MINIMUM: u8 = 1;
     pub const MAXIMUM: u8 = 1;
-    
+
     pub fn is_supported(version: u8) -> bool {
         version == 1
     }
-    
+
     pub fn negotiate_version(client_versions: &[u8], server_versions: &[u8]) -> Option<u8> {
         let client_set: std::collections::HashSet<u8> = client_versions.iter().cloned().collect();
         let server_set: std::collections::HashSet<u8> = server_versions.iter().cloned().collect();
-        let common: std::collections::HashSet<u8> = client_set.intersection(&server_set).cloned().collect();
-        
+        let common: std::collections::HashSet<u8> =
+            client_set.intersection(&server_set).cloned().collect();
+
         common.into_iter().max()
     }
 }
@@ -489,19 +542,19 @@ impl ProtocolVersion {
 impl crate::binary_protocol_utils::BinaryEncodable for BitchatPacket {
     fn to_binary_data(&self) -> Vec<u8> {
         let mut data = Vec::new();
-        
+
         // Header: version (1 byte)
         data.push(self.version);
-        
+
         // Type (1 byte)
         data.push(self.msg_type as u8);
-        
+
         // TTL (1 byte)
         data.push(self.ttl);
-        
+
         // Timestamp (8 bytes, big-endian)
         data.extend_from_slice(&self.timestamp.to_be_bytes());
-        
+
         // Flags (1 byte)
         let mut flags: u8 = 0;
         if self.recipient_id.is_some() {
@@ -511,14 +564,14 @@ impl crate::binary_protocol_utils::BinaryEncodable for BitchatPacket {
             flags |= FLAG_HAS_SIGNATURE;
         }
         data.push(flags);
-        
+
         // Payload length (2 bytes, big-endian)
         let payload_len = self.payload.len() as u16;
         data.extend_from_slice(&payload_len.to_be_bytes());
-        
+
         // SenderID (8 bytes)
         data.extend_from_slice(&self.sender_id);
-        
+
         // RecipientID (8 bytes) - if present
         if let Some(recipient_id) = &self.recipient_id {
             data.extend_from_slice(recipient_id);
@@ -526,32 +579,33 @@ impl crate::binary_protocol_utils::BinaryEncodable for BitchatPacket {
             // Use broadcast recipient
             data.extend_from_slice(&BROADCAST_RECIPIENT);
         }
-        
+
         // Payload
         data.extend_from_slice(&self.payload);
-        
+
         // Signature (64 bytes) - if present
         if let Some(signature) = &self.signature {
             data.extend_from_slice(signature);
         }
-        
+
         data
     }
-    
+
     fn from_binary_data(data: &[u8]) -> Option<Self> {
-        if data.len() < 22 { // Minimum size: version(1) + type(1) + ttl(1) + timestamp(8) + flags(1) + payload_len(2) + sender(8)
+        if data.len() < 22 {
+            // Minimum size: version(1) + type(1) + ttl(1) + timestamp(8) + flags(1) + payload_len(2) + sender(8)
             return None;
         }
-        
+
         let mut offset = 0;
-        
+
         // Version
         let version = data.get(offset)?;
         if *version != 1 {
             return None; // Only support version 1
         }
         offset += 1;
-        
+
         // Message type
         let msg_type_byte = data.get(offset)?;
         let msg_type = match msg_type_byte {
@@ -580,36 +634,42 @@ impl crate::binary_protocol_utils::BinaryEncodable for BitchatPacket {
             _ => return None,
         };
         offset += 1;
-        
+
         // TTL
         let ttl = *data.get(offset)?;
         offset += 1;
-        
+
         // Timestamp (8 bytes, big-endian)
         if data.len() < offset + 8 {
             return None;
         }
         let timestamp_bytes = &data[offset..offset + 8];
         let timestamp = u64::from_be_bytes([
-            timestamp_bytes[0], timestamp_bytes[1], timestamp_bytes[2], timestamp_bytes[3],
-            timestamp_bytes[4], timestamp_bytes[5], timestamp_bytes[6], timestamp_bytes[7]
+            timestamp_bytes[0],
+            timestamp_bytes[1],
+            timestamp_bytes[2],
+            timestamp_bytes[3],
+            timestamp_bytes[4],
+            timestamp_bytes[5],
+            timestamp_bytes[6],
+            timestamp_bytes[7],
         ]);
         offset += 8;
-        
+
         // Flags
         let flags = *data.get(offset)?;
         let has_recipient = (flags & FLAG_HAS_RECIPIENT) != 0;
         let has_signature = (flags & FLAG_HAS_SIGNATURE) != 0;
-        let is_compressed = (flags & FLAG_IS_COMPRESSED) != 0;
+        let _is_compressed = (flags & FLAG_IS_COMPRESSED) != 0;
         offset += 1;
-        
+
         // Payload length (2 bytes, big-endian)
         if data.len() < offset + 2 {
             return None;
         }
         let payload_len = u16::from_be_bytes([data[offset], data[offset + 1]]) as usize;
         offset += 2;
-        
+
         // SenderID (8 bytes)
         if data.len() < offset + 8 {
             return None;
@@ -617,7 +677,7 @@ impl crate::binary_protocol_utils::BinaryEncodable for BitchatPacket {
         let sender_id = data.get(offset..offset + 8)?.to_vec();
         let sender_id_str = hex_encode(&sender_id);
         offset += 8;
-        
+
         // RecipientID (8 bytes) - if present
         let recipient_id = if has_recipient {
             if data.len() < offset + 8 {
@@ -629,28 +689,27 @@ impl crate::binary_protocol_utils::BinaryEncodable for BitchatPacket {
         } else {
             None
         };
-        
+
         let recipient_id_str = recipient_id.as_ref().map(|id| hex_encode(id));
-        
+
         // Payload
         if data.len() < offset + payload_len {
             return None;
         }
         let payload = data.get(offset..offset + payload_len)?.to_vec();
         offset += payload_len;
-        
+
         // Signature (64 bytes) - if present
         let signature = if has_signature {
             if data.len() < offset + SIGNATURE_SIZE {
                 return None;
             }
             let signature_data = data.get(offset..offset + SIGNATURE_SIZE)?.to_vec();
-            offset += SIGNATURE_SIZE;
             Some(signature_data)
         } else {
             None
         };
-        
+
         Some(BitchatPacket {
             version: *version,
             msg_type,
@@ -665,4 +724,3 @@ impl crate::binary_protocol_utils::BinaryEncodable for BitchatPacket {
         })
     }
 }
-

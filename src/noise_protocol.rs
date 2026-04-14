@@ -1,13 +1,12 @@
 use crate::debug_full_println;
 use chacha20poly1305::aead::{Aead as ChaChaAead, KeyInit, Payload};
-use chacha20poly1305::{ChaCha20Poly1305, Key as ChaChaKey, Nonce as ChaChaNonce};
+use chacha20poly1305::{ChaCha20Poly1305, Key as ChaChaKey};
 use generic_array::GenericArray;
-use hkdf::Hkdf;
 use hmac::{Hmac, Mac as HmacMac};
 use sha2::{Digest, Sha256};
 use std::fs::OpenOptions;
 use std::io::Write;
-use x25519_dalek::{PublicKey, SharedSecret, StaticSecret};
+use x25519_dalek::{PublicKey, StaticSecret};
 
 // MARK: - Debug Logging
 
@@ -1236,7 +1235,7 @@ impl NoiseHandshakeState {
         // Responder uses c2 for send, c1 for receive
         Ok(match self.role {
             NoiseRole::Initiator => (c1, c2), // send_cipher, receive_cipher
-            NoiseRole::Responder => (c2, c1), // send_cipher, receive_cipher  
+            NoiseRole::Responder => (c2, c1), // send_cipher, receive_cipher
         })
     }
 

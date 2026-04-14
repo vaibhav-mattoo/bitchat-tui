@@ -5,7 +5,7 @@ use tokio::sync::mpsc;
 use tokio::time::{self, Duration};
 use futures::stream::StreamExt;
 use std::collections::{HashMap, HashSet};
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 use tokio::sync::Mutex;
 
 use bloomfilter::Bloom;
