@@ -344,15 +344,38 @@ get_architecture() {
 
 get_bitness() {
     need_cmd head
+    need_cmd tail
     local _current_exe_head
-    _current_exe_head=$(head -c 5 /proc/self/exe)
-    if [ "${_current_exe_head}" = "$(printf '\177ELF\001')" ]; then
-        echo 32
-    elif [ "${_current_exe_head}" = "$(printf '\177ELF\002')" ]; then
-        echo 64
-    else
-        err "unknown platform bitness"
+    _current_exe_head=$(head -c 5 /proc/self/exe 2>/dev/null || true)
+    if [ -n "${_current_exe_head}" ]; then
+        if [ "${_current_exe_head}" = "$(printf '\177ELF\001')" ]; then
+            echo 32
+            return 0
+        elif [ "${_current_exe_head}" = "$(printf '\177ELF\002')" ]; then
+            echo 64
+            return 0
+        fi
     fi
+    if [ "${_ostype}" = "MINGW"* ] || [ "${_ostype}" = "MSYS"* ] || [ "${_ostype}" = "CYGWIN"* ]; then
+        if [ "${PROCESSOR_ARCHITEW6432:-}" = "ARM64" ]; then
+            echo 64
+            return 0
+        elif [ "${PROCESSOR_ARCHITEW6432:-}" = "ARM" ]; then
+            echo 32
+            return 0
+        fi
+        case "${PROCESSOR_ARCHITECTURE:-}" in
+            ARM64) echo 64 ;;
+            *)
+                case "$(uname -m)" in
+                    x86_64 | amd64) echo 64 ;;
+                    *) echo 32 ;;
+                esac
+            ;;
+        esac
+        return 0
+    fi
+    err "unknown platform bitness"
 }
 
 get_endianness() {
